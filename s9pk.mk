@@ -2,7 +2,11 @@
 # This file is imported by ./Makefile. Make edits there
 
 PACKAGE_ID := $(shell awk -F"'" '/id:/ {print $$2}' startos/manifest/index.ts)
-INGREDIENTS := $(shell start-cli s9pk list-ingredients 2>/dev/null)
+# Build-only commands override the host so CI runners without mDNS for the
+# workspace's dev host profile (dev-vm.local) don't fail name resolution.
+# See ai-service-packaging/github-actions.md. install/publish keep their
+# configured hosts.
+INGREDIENTS := $(shell start-cli -H http://localhost s9pk list-ingredients 2>/dev/null)
 ARCHES ?= x86 arm riscv
 TARGETS ?= arches
 ifdef VARIANT
@@ -53,12 +57,12 @@ riscv riscv64: arch/riscv64
 $(BASE_NAME).s9pk: $(INGREDIENTS) .git/HEAD .git/index
 	@$(MAKE) --no-print-directory ingredients
 	@echo "   Packing '$@'..."
-	start-cli s9pk pack -o $@
+	start-cli -H http://localhost s9pk pack -o $@
 
 $(BASE_NAME)_%.s9pk: $(INGREDIENTS) .git/HEAD .git/index
 	@$(MAKE) --no-print-directory ingredients
 	@echo "   Packing '$@'..."
-	start-cli s9pk pack --arch=$* -o $@
+	start-cli -H http://localhost s9pk pack --arch=$* -o $@
 
 ingredients: $(INGREDIENTS)
 	@echo "   Re-evaluating ingredients..."
