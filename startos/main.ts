@@ -12,6 +12,7 @@ import {
   s3Port,
   s3User,
   toWebsocketUrl,
+  uiMultiHostId,
   webPort,
 } from './utils'
 
@@ -24,20 +25,22 @@ export const main = sdk.setupMain(async ({ effects }) => {
 
   // Buzz resolves the community (tenant) from the connection host, so one
   // address must be chosen as canonical. See utils.pickCanonicalOrigin.
-  const interfaceUrls =
-    (await sdk.serviceInterface
-      .getOwn(
-        effects,
-        'ui',
-        (i) => i?.addressInfo?.nonLocal.format('urlstring') ?? [],
-      )
-      .const()) ?? []
+  //
+  // Read raw host info instead of sdk.serviceInterface.getOwn(): the SDK's
+  // interface enrichment (filledAddress) dereferences host.hostnameInfo
+  // without a guard and throws while StartOS is still constructing package
+  // state, crash-looping startup. With the raw effect we guard every access
+  // ourselves, and constRetry re-runs setupMain once host info (re)appears.
+  const uiHost = await effects
+    .getHostInfo({ hostId: uiMultiHostId, callback: effects.constRetry })
+    .catch(() => null)
+  const hostnames = uiHost?.hostnameInfo?.[webPort] ?? []
 
   const origin =
     (store?.relayHostOverride
       ? originFromOverride(store.relayHostOverride)
       : null) ??
-    pickCanonicalOrigin(interfaceUrls) ??
+    pickCanonicalOrigin(hostnames) ??
     `http://localhost:${webPort}`
 
   const relayUrl = toWebsocketUrl(origin)
