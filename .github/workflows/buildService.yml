@@ -57,6 +57,12 @@ jobs:
           chmod +x "$HOME/.local/bin/start-cli"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build JS bundle
+        run: npm run build
+
       - name: Initialize StartOS developer key
         run: start-cli init-key
 
