@@ -72,8 +72,13 @@ jobs:
       - name: Build package
         run: make x86_64
 
+      # Best-effort: the .s9pk is ~220 MB, so the account artifact-storage
+      # quota can reject the upload even when the build succeeds. The build
+      # itself is the required gate.
       - name: Upload artifact
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: buzz_x86_64.s9pk
           path: buzz_x86_64.s9pk
+          retention-days: 3

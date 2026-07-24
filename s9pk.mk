@@ -20,7 +20,7 @@ endif
 .SECONDARY:
 
 define SUMMARY
-	@manifest=$$(start-cli s9pk inspect $(1) manifest); \
+	@manifest=$$(start-cli -H http://localhost s9pk inspect $(1) manifest); \
 	size=$$(du -h $(1) | awk '{print $$1}'); \
 	title=$$(printf '%s' "$$manifest" | jq -r .title); \
 	version=$$(printf '%s' "$$manifest" | jq -r .version); \
