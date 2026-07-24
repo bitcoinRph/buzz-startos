@@ -72,9 +72,26 @@ jobs:
       - name: Build package
         run: make x86_64
 
-      # Best-effort: the .s9pk is ~220 MB, so the account artifact-storage
-      # quota can reject the upload even when the build succeeds. The build
-      # itself is the required gate.
+      # Primary delivery: a rolling prerelease. Release assets do not count
+      # against the Actions artifact-storage quota, which is exhausted on
+      # this account and silently rejects ~220 MB workflow artifacts.
+      - name: Publish .s9pk to rolling dev release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          tag="dev-build"
+          gh release delete "$tag" --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" || true
+          gh release create "$tag" buzz_x86_64.s9pk \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$HEAD_SHA" \
+            --prerelease \
+            --title "Dev build ${HEAD_SHA:0:7}" \
+            --notes "Automated buzz_x86_64.s9pk build of commit ${HEAD_SHA}. Sideload via System > Sideload a Service."
+
+      # Best-effort secondary: the ~220 MB artifact upload fails while the
+      # account artifact-storage quota is exhausted. The build + release
+      # above are the required gates.
       - name: Upload artifact
         continue-on-error: true
         uses: actions/upload-artifact@v4
