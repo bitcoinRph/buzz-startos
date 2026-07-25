@@ -88,3 +88,40 @@ export function originFromOverride(override: string): string | null {
 export function toWebsocketUrl(origin: string): string {
   return origin.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:')
 }
+
+/**
+ * Resolve the deployment's canonical HTTP(S) origin the same way main.ts does,
+ * so actions (invite links, RELAY_URL for buzz-admin) agree with the running
+ * relay: user override first, then the ui-multi host binding, then localhost.
+ *
+ * `callback` is passed to getHostInfo — main.ts passes effects.constRetry to
+ * re-run on host changes; one-shot actions omit it.
+ */
+export async function resolveCanonicalOrigin(
+  effects: T.Effects,
+  relayHostOverride: string | undefined,
+  callback?: () => void,
+): Promise<string> {
+  const override = relayHostOverride
+    ? originFromOverride(relayHostOverride)
+    : null
+  if (override) return override
+  const uiHost = await effects
+    .getHostInfo({ hostId: uiMultiHostId, callback })
+    .catch(() => null)
+  const hostnames = uiHost?.hostnameInfo?.[webPort] ?? []
+  return pickCanonicalOrigin(hostnames) ?? `http://localhost:${webPort}`
+}
+
+/**
+ * The community lookup key stored in `communities.host` — the origin's host
+ * plus an explicit non-default port, lowercased. Mirrors the relay's
+ * `relay_url_authority` + `normalize_host`.
+ */
+export function communityHostFromOrigin(origin: string): string {
+  try {
+    return new URL(origin).host.toLowerCase()
+  } catch {
+    return ''
+  }
+}
