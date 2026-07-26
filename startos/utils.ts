@@ -125,3 +125,70 @@ export function communityHostFromOrigin(origin: string): string {
     return ''
   }
 }
+
+/** True for the RFC1918 private IPv4 ranges (10/8, 172.16/12, 192.168/16). */
+function isPrivateIpv4(host: string): boolean {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host)
+  if (!m) return false
+  const a = Number(m[1])
+  const b = Number(m[2])
+  if (a === 10) return true
+  if (a === 172 && b >= 16 && b <= 31) return true
+  if (a === 192 && b === 168) return true
+  return false
+}
+
+/**
+ * The Buzz mobile app refuses to connect to a relay URL that is non-HTTPS,
+ * loopback, or a private IPv4 address (release-build guard in
+ * mobile/lib/features/pairing/pairing_provider.dart `_validateRelayUrl`). An
+ * invite minted for such an origin can never be claimed from a phone, so we
+ * catch it at mint time and tell the operator how to fix it rather than
+ * handing them a dead link.
+ *
+ * A `.local` mDNS hostname is fine (the app only flags numeric private IPs);
+ * it just requires the phone to trust the server's Root CA for the wss:// TLS.
+ *
+ * Returns an error message when the origin is unreachable for mobile, or null
+ * when it is acceptable.
+ */
+export function mobileInviteOriginError(origin: string): string | null {
+  let url: URL
+  try {
+    url = new URL(origin)
+  } catch {
+    return `Could not parse the relay's canonical address "${origin}".`
+  }
+  const host = url.hostname.toLowerCase()
+
+  const fix =
+    'Run the "Set Canonical Address" action with a reachable HTTPS host — a ' +
+    'clearnet domain, or your server\'s "<name>.local" LAN address (with its ' +
+    'Root CA trusted on the phone) — then regenerate the invite.'
+
+  if (url.protocol !== 'https:') {
+    return (
+      `The relay's canonical address (${origin}) is not HTTPS. The Buzz ` +
+      `mobile app only connects to wss:// relays, so this invite could not ` +
+      `be claimed from a phone. ${fix}`
+    )
+  }
+  if (
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    host === '127.0.0.1' ||
+    host === '::1'
+  ) {
+    return (
+      `The relay's canonical address (${origin}) points at localhost, which ` +
+      `a phone cannot reach. ${fix}`
+    )
+  }
+  if (isPrivateIpv4(host)) {
+    return (
+      `The relay's canonical address (${origin}) is a private IP address, ` +
+      `which the Buzz mobile app rejects. Use a hostname instead. ${fix}`
+    )
+  }
+  return null
+}

@@ -42,6 +42,8 @@ const dict = {
   'Mint an invite link to add this community to the Buzz mobile app. On a closed relay, claiming the invite also admits the device.': 29,
   'Manage Members': 30,
   'List, admit, or remove relay members. Adding a pubkey admits it to a closed community without an invite.': 31,
+  'Pair Mobile Device': 32,
+  'Generate a QR/pairing code that connects the Buzz mobile app directly to this relay, without an invite link. Recommended for iOS.': 33,
 } as const
 
 /**

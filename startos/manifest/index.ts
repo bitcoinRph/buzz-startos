@@ -15,7 +15,11 @@ export const manifest = setupManifest({
   volumes: ['main'],
   images: {
     buzz: {
-      source: { dockerTag: 'ghcr.io/block/buzz:0.1.1' },
+      // Track the current published relay (multi-arch amd64+arm64). The old
+      // 0.1.1 tag predates the multi-tenant `communities` schema the mobile
+      // app requires and pulled in Typesense/partition issues; `main` is the
+      // current Postgres-FTS, mobile-compatible relay.
+      source: { dockerTag: 'ghcr.io/block/buzz:main' },
       arch: ['x86_64', 'aarch64'],
     },
     postgres: {

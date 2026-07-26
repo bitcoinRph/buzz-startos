@@ -5,6 +5,7 @@ import { setRelayAddress } from './setRelayAddress'
 import { setMembershipMode } from './setMembershipMode'
 import { createInvite } from './createInvite'
 import { manageMembers } from './manageMembers'
+import { pairDevice } from './pairDevice'
 
 export const actions = sdk.Actions.of()
   .addAction(getCredentials)
@@ -13,3 +14,4 @@ export const actions = sdk.Actions.of()
   .addAction(setMembershipMode)
   .addAction(createInvite)
   .addAction(manageMembers)
+  .addAction(pairDevice)

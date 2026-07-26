@@ -61,6 +61,12 @@ Sideload the `.s9pk` via **System > Sideload a Service** in your StartOS UI,
 or run `make install` with `host: http://server-name.local` configured in
 `~/.startos/config.yaml`.
 
+> **Upgrading from an early build?** If you previously installed a build that
+> ran the `ghcr.io/block/buzz:0.1.1` image, its database is an incompatible
+> pre-multi-tenant schema and the current relay cannot migrate it in place —
+> you must start the database fresh. **Uninstall** the old service first, then
+> sideload this package. See [docs/RESET.md](docs/RESET.md).
+
 ## Known limitations
 
 - Only one hostname works at a time (host-derived community boundary — see
