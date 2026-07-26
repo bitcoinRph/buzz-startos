@@ -182,6 +182,14 @@ export const main = sdk.setupMain(async ({ effects }) => {
           // Postgres and object storage), so it goes to the container tmpfs.
           BUZZ_GIT_REPO_PATH: '/tmp/buzz-repos',
           RUST_LOG: 'info',
+          // Apply the relay's embedded SQLx migrations on startup. The relay
+          // skips migrations unless this is set, so a fresh Postgres volume
+          // would otherwise come up with no schema ("relation events does not
+          // exist"). On a clean volume this provisions the full 1321
+          // multi-tenant schema (communities, events, channels, …) from
+          // migration 0001. See docs/RESET.md — this package expects a fresh
+          // volume, not an in-place upgrade from a pre-1321 database.
+          BUZZ_AUTO_MIGRATE: 'true',
           // Closed (NIP-43) membership: only takes effect with an owner set,
           // otherwise enabling it would lock everyone out. NIP-43 also needs a
           // stable relay key, which is always injected below.
