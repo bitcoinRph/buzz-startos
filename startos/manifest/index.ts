@@ -15,7 +15,10 @@ export const manifest = setupManifest({
   volumes: ['main'],
   images: {
     buzz: {
-      source: { dockerTag: 'ghcr.io/block/buzz:0.1.1' },
+      // Build the relay from the pinned submodule instead of packing the stale
+      // ghcr.io/block/buzz:0.1.1 image. The submodule contains the Postgres-FTS
+      // search path and partition-overlap guard required by StartOS runtime.
+      source: { dockerBuild: { workdir: './buzz' } },
       arch: ['x86_64', 'aarch64'],
     },
     postgres: {
