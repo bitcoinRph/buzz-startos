@@ -34,6 +34,8 @@ export default {
     29: 'Genera un enlace de invitación para añadir esta comunidad a la app móvil de Buzz. En un relay cerrado, reclamar la invitación también admite el dispositivo.',
     30: 'Gestionar miembros',
     31: 'Lista, admite o elimina miembros del relay. Añadir un pubkey lo admite en una comunidad cerrada sin invitación.',
+    32: 'Emparejar dispositivo móvil',
+    33: 'Genera un código QR/de emparejamiento que conecta la app móvil de Buzz directamente a este relay, sin enlace de invitación. Recomendado para iOS.',
   },
   de_DE: {
     0: 'Starte Buzz!',
@@ -68,6 +70,8 @@ export default {
     29: 'Erzeugt einen Einladungslink, um diese Community zur Buzz-Mobil-App hinzuzufügen. Auf einem geschlossenen Relay nimmt das Einlösen der Einladung das Gerät zugleich auf.',
     30: 'Mitglieder verwalten',
     31: 'Mitglieder auflisten, aufnehmen oder entfernen. Das Hinzufügen eines Pubkeys nimmt ihn ohne Einladung in eine geschlossene Community auf.',
+    32: 'Mobilgerät koppeln',
+    33: 'Erzeugt einen QR-/Kopplungscode, der die Buzz-Mobil-App ohne Einladungslink direkt mit diesem Relay verbindet. Empfohlen für iOS.',
   },
   pl_PL: {
     0: 'Uruchamianie Buzz!',
@@ -102,6 +106,8 @@ export default {
     29: 'Generuje link zaproszenia, aby dodać tę społeczność do aplikacji mobilnej Buzz. Na zamkniętym relayu zrealizowanie zaproszenia przyjmuje też urządzenie.',
     30: 'Zarządzaj członkami',
     31: 'Wyświetlaj, przyjmuj lub usuwaj członków relaya. Dodanie pubkey przyjmuje go do zamkniętej społeczności bez zaproszenia.',
+    32: 'Sparuj urządzenie mobilne',
+    33: 'Generuje kod QR/parowania, który łączy aplikację mobilną Buzz bezpośrednio z tym relayem, bez linku zapraszającego. Zalecane dla iOS.',
   },
   fr_FR: {
     0: 'Démarrage de Buzz !',
@@ -136,5 +142,7 @@ export default {
     29: "Génère un lien d'invitation pour ajouter cette communauté à l'app mobile Buzz. Sur un relay fermé, accepter l'invitation admet aussi l'appareil.",
     30: 'Gérer les membres',
     31: "Lister, admettre ou retirer des membres du relay. Ajouter une pubkey l'admet dans une communauté fermée sans invitation.",
+    32: 'Appairer un appareil mobile',
+    33: "Génère un code QR/d'appairage qui connecte l'app mobile Buzz directement à ce relay, sans lien d'invitation. Recommandé pour iOS.",
   },
 } satisfies Record<string, LangDict>
