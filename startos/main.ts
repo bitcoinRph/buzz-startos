@@ -186,12 +186,6 @@ export const main = sdk.setupMain(async ({ effects }) => {
           // migrations before the relay starts schedulers/workflows so fresh
           // installs have the required events/channels/workflows tables.
           BUZZ_AUTO_MIGRATE: 'true',
-          // This package originally booted some pre-release StartOS databases
-          // from ghcr.io/block/buzz:0.1.1 before switching to the pinned source
-          // build. The source tree's consolidated migration 0001 has a different
-          // checksum, but those databases already have every embedded migration
-          // marked successful; allow the relay to verify schema and continue.
-          BUZZ_ACCEPT_MODIFIED_INITIAL_MIGRATION: 'true',
           // Closed (NIP-43) membership: only takes effect with an owner set,
           // otherwise enabling it would lock everyone out. NIP-43 also needs a
           // stable relay key, which is always injected below.
