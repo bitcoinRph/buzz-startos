@@ -182,6 +182,10 @@ export const main = sdk.setupMain(async ({ effects }) => {
           // Postgres and object storage), so it goes to the container tmpfs.
           BUZZ_GIT_REPO_PATH: '/tmp/buzz-repos',
           RUST_LOG: 'info',
+          // StartOS owns this single relay instance; apply Buzz's embedded SQLx
+          // migrations before the relay starts schedulers/workflows so fresh
+          // installs have the required events/channels/workflows tables.
+          BUZZ_AUTO_MIGRATE: 'true',
           // Closed (NIP-43) membership: only takes effect with an owner set,
           // otherwise enabling it would lock everyone out. NIP-43 also needs a
           // stable relay key, which is always injected below.
