@@ -6,6 +6,7 @@ import {
   communityHostFromOrigin,
   dbName,
   dbUser,
+  mobileInviteOriginError,
   postgresPort,
   resolveCanonicalOrigin,
   toWebsocketUrl,
@@ -63,6 +64,16 @@ export const createInvite = sdk.Action.withInput(
       effects,
       store?.relayHostOverride,
     )
+
+    // Refuse to mint an invite the mobile app would reject on sight. Without a
+    // canonical address set, resolveCanonicalOrigin can fall back to
+    // http://localhost:3000 (or expose a private-IP LAN address), and the
+    // released Buzz app rejects non-HTTPS, loopback, and private-IP relay URLs.
+    const originError = mobileInviteOriginError(origin)
+    if (originError) {
+      throw new Error(originError)
+    }
+
     const host = communityHostFromOrigin(origin)
     if (!host || !HOST_RE.test(host)) {
       throw new Error(`Could not derive a valid community host from ${origin}`)
