@@ -15,11 +15,16 @@ export const manifest = setupManifest({
   volumes: ['main'],
   images: {
     buzz: {
-      // Track the current published relay (multi-arch amd64+arm64). The old
-      // 0.1.1 tag predates the multi-tenant `communities` schema the mobile
-      // app requires and pulled in Typesense/partition issues; `main` is the
-      // current Postgres-FTS, mobile-compatible relay.
-      source: { dockerTag: 'ghcr.io/block/buzz:main' },
+      // Pin the Buzz 0.5.5 release relay by immutable per-commit tag
+      // (multi-arch amd64+arm64 verified). GHCR publishes no semver image tag,
+      // so we pin `sha-<shortsha>` of the 0.5.5 release commit (block/buzz
+      // 8342dfc, tag desktop-v0.5.5) rather than the moving `main`. 0.5.5 ships
+      // migrations 0001–0027 — a superset of any earlier main-based install, so
+      // BUZZ_AUTO_MIGRATE upgrades forward in place (no fresh DB needed unless
+      // coming from the pre-1321 0.1.1 image). It also carries the mobile
+      // wss-scheme fix (RelayConfig canonicalization, v0.5.2+) so invite links
+      // work in the iOS app.
+      source: { dockerTag: 'ghcr.io/block/buzz:sha-8342dfc' },
       arch: ['x86_64', 'aarch64'],
     },
     postgres: {

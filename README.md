@@ -10,7 +10,7 @@ bundles everything the relay needs in a single service:
 
 | Component | Image | Purpose |
 |-----------|-------|---------|
-| Buzz relay | `ghcr.io/block/buzz` | WebSocket relay, REST bridge, web UI, git hosting |
+| Buzz relay | `ghcr.io/block/buzz` (0.5.5) | WebSocket relay, REST bridge, web UI, git hosting |
 | PostgreSQL 17 | `postgres:17-alpine` | Event store, full-text search, audit log |
 | Redis 7 | `redis:7-alpine` | Pub/sub fan-out, presence, rate limits |
 | MinIO | `minio/minio` | Blossom/S3 media storage |
@@ -61,11 +61,30 @@ Sideload the `.s9pk` via **System > Sideload a Service** in your StartOS UI,
 or run `make install` with `host: http://server-name.local` configured in
 `~/.startos/config.yaml`.
 
-> **Upgrading from an early build?** If you previously installed a build that
-> ran the `ghcr.io/block/buzz:0.1.1` image, its database is an incompatible
-> pre-multi-tenant schema and the current relay cannot migrate it in place —
-> you must start the database fresh. **Uninstall** the old service first, then
-> sideload this package. See [docs/RESET.md](docs/RESET.md).
+> **Upgrading.** This package pins the Buzz **0.5.5** release relay. From any
+> build that already ran a current (`ghcr.io/block/buzz:main`) image, the
+> database migrates **forward in place** — 0.5.5 ships a superset of migrations,
+> which the relay applies on startup (`BUZZ_AUTO_MIGRATE`). Just sideload over
+> the existing install.
+>
+> The one exception is the **original `ghcr.io/block/buzz:0.1.1`** image: its
+> database is an incompatible pre-multi-tenant schema that cannot be migrated in
+> place. If you ever ran that build, start the database fresh — **uninstall**
+> first, then sideload. See [docs/RESET.md](docs/RESET.md).
+
+## Mobile (iOS) compatibility
+
+The relay is compatible with the Buzz iOS app. Two onboarding paths:
+
+- **Invite links** (`https://<relay>/invite/<code>`): work with app builds based
+  on Buzz **0.5.2+**, which fixed a client bug that downgraded `wss://` invite
+  URLs to `ws://`. Update the App Store app if invites fail to connect.
+- **Pair Mobile Device** action: generates a scan-to-pair QR that works
+  regardless of app version (it hands the phone an `https://` relay URL, which
+  the app maps to `wss://` correctly). Use this if you can't yet update the app.
+
+For a `.local` LAN address the phone must trust your server's Root CA; a
+clearnet domain avoids that step.
 
 ## Known limitations
 
