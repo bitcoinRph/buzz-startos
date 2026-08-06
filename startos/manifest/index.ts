@@ -15,11 +15,9 @@ export const manifest = setupManifest({
   volumes: ['main'],
   images: {
     buzz: {
-      // Track the current published relay (multi-arch amd64+arm64). The old
-      // 0.1.1 tag predates the multi-tenant `communities` schema the mobile
-      // app requires and pulled in Typesense/partition issues; `main` is the
-      // current Postgres-FTS, mobile-compatible relay.
-      source: { dockerTag: 'ghcr.io/block/buzz:main' },
+      // Build from the pinned Buzz submodule so StartOS can ship relay patches
+      // before they are available in the public ghcr.io/block/buzz image.
+      source: { dockerBuild: { workdir: './buzz' } },
       arch: ['x86_64', 'aarch64'],
     },
     postgres: {
