@@ -15,9 +15,9 @@ export const manifest = setupManifest({
   volumes: ['main'],
   images: {
     buzz: {
-      // Build from the pinned Buzz submodule so StartOS can ship relay patches
-      // before they are available in the public ghcr.io/block/buzz image.
-      source: { dockerBuild: { workdir: './buzz' } },
+      // Temporary local rescue build: use the known-good public image while the
+      // patched source package rebuilds in CI.
+      source: { dockerTag: 'ghcr.io/block/buzz:main' },
       arch: ['x86_64', 'aarch64'],
     },
     postgres: {
