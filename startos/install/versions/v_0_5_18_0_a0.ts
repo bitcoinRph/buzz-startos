@@ -1,10 +1,10 @@
 import { VersionInfo, IMPOSSIBLE } from '@start9labs/start-sdk'
 
 export const v_0_5_18_0_a0 = VersionInfo.of({
-  version: '0.5.18:0-alpha.0',
+  version: '0.5.18:1-alpha.0',
   releaseNotes: {
     en_US:
-      'Update packaged Buzz source to desktop-v0.5.18. This desktop-focused upstream release includes Projects navigation and collaboration refinements, workflow editor support, compact Buzz link metadata, reconnect and notification fixes, repository tree fixes, media handling fixes, and desktop/web performance improvements. The StartOS package continues to run the published Buzz relay image with PostgreSQL, Redis, and MinIO.',
+      'Update packaged Buzz source to desktop-v0.5.18 and build the relay from the pinned source so brownfield StartOS pre-release databases can normalize already-applied SQLx migration checksums before applying migrations 29–32. This keeps existing Buzz data while restoring the upgraded relay, then continues to run with PostgreSQL, Redis, and MinIO.',
     es_ES:
       'Actualiza el código fuente empaquetado de Buzz a desktop-v0.5.18. Esta versión upstream centrada en escritorio incluye mejoras de Projects, editor de workflows, metadatos compactos de enlaces Buzz, correcciones de reconexión/notificaciones/repositorios/medios y mejoras de rendimiento. El paquete StartOS sigue ejecutando la imagen publicada del relay de Buzz con PostgreSQL, Redis y MinIO.',
     de_DE:
