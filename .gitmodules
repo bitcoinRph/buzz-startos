@@ -1,4 +1,5 @@
 [submodule "buzz"]
 	path = buzz
-	url = https://github.com/bitcoinRph/buzz.git
+	url = https://github.com/block/buzz
 	shallow = true
+	branch = desktop-v0.5.20
