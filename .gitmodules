@@ -1,5 +1,5 @@
 [submodule "buzz"]
 	path = buzz
-	url = https://github.com/block/buzz
+	url = https://github.com/bitcoinRph/buzz.git
 	shallow = true
-	branch = desktop-v0.5.20
+	branch = startos-desktop-v0.5.20-checksum-normalize
