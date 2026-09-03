@@ -1,0 +1,154 @@
+import assert from 'node:assert/strict'
+import { execFile as execFileCallback } from 'node:child_process'
+import { readFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
+import { promisify } from 'node:util'
+import test from 'node:test'
+
+const execFile = promisify(execFileCallback)
+const require = createRequire(import.meta.url)
+const workflowPath = new URL(
+  '../.github/workflows/buildService.yml',
+  import.meta.url,
+)
+const versionsPath = new URL(
+  '../startos/install/versions/index.ts',
+  import.meta.url,
+)
+
+async function workflow() {
+  return readFile(workflowPath, 'utf8')
+}
+
+test('untrusted builds are read-only and cannot access the stable signing key', async () => {
+  const yaml = await workflow()
+  const packageJob = yaml.match(/\n  package:[\s\S]*?(?=\n  publish:)/)?.[0]
+  assert.ok(packageJob, 'read-only package job is missing')
+  assert.match(packageJob, /permissions:\n\s+contents: read/)
+  assert.doesNotMatch(packageJob, /secrets\.BUILD_KEY/)
+  assert.doesNotMatch(packageJob, /gh release/)
+  assert.match(packageJob, /cargo test --workspace --all-targets/)
+
+  const checkoutSteps = [
+    ...yaml.matchAll(
+      /uses: actions\/checkout@[^\n]+[\s\S]*?(?=\n\s{6}- name:|\n\s{4}[a-z])/g,
+    ),
+  ]
+  assert.ok(
+    checkoutSteps.length >= 2,
+    'expected checkout in validation and publish jobs',
+  )
+  for (const [checkout] of checkoutSteps) {
+    assert.match(checkout, /persist-credentials: false/)
+  }
+
+  const thirdPartyActions = [...yaml.matchAll(/uses: ([^\s]+)@([^\s]+)/g)]
+  assert.ok(thirdPartyActions.length >= 5)
+  for (const [, action, revision] of thirdPartyActions) {
+    assert.match(
+      revision,
+      /^[0-9a-f]{40}$/,
+      `${action} must be pinned to a commit SHA`,
+    )
+  }
+})
+
+test('stable signing and release publishing are isolated to protected main pushes', async () => {
+  const yaml = await workflow()
+  const publishJob = yaml.match(/\n  publish:[\s\S]*/)?.[0]
+  assert.ok(publishJob, 'trusted publish job is missing')
+  assert.match(
+    publishJob,
+    /if: github\.event_name == 'push' && github\.ref == 'refs\/heads\/main'/,
+  )
+  assert.match(publishJob, /environment: package-signing/)
+  assert.match(publishJob, /permissions:\n\s+contents: write/)
+  assert.match(publishJob, /BUILD_KEY: \$\{\{ secrets\.BUILD_KEY \}\}/)
+  assert.match(publishJob, /umask 077/)
+  assert.match(
+    publishJob,
+    /if: always\(\)[\s\S]*rm -f \.\.\/\.startos\/build\.key\.pem/,
+  )
+  assert.doesNotMatch(publishJob, /gh release delete|gh release edit|--clobber/)
+  assert.match(publishJob, /tag="dev-build-\$\{HEAD_SHA\}"/)
+  assert.match(publishJob, /gh release create "\$tag"/)
+  assert.match(
+    publishJob,
+    /release_json="\$\(gh api "repos\/\$GITHUB_REPOSITORY\/releases\/tags\/\$tag"\)"/,
+  )
+  assert.match(publishJob, /remote_digest=.*\.digest/)
+  assert.match(publishJob, /remote_size=.*\.size/)
+  assert.match(
+    publishJob,
+    /remote_tag_sha="\$\(gh api "repos\/\$GITHUB_REPOSITORY\/git\/ref\/tags\/\$tag" --jq \.object\.sha\)"/,
+  )
+  assert.match(publishJob, /test "\$remote_digest" = "sha256:\$package_sha"/)
+  assert.match(publishJob, /test "\$remote_size" = "\$package_size"/)
+  assert.match(publishJob, /test "\$remote_tag_sha" = "\$HEAD_SHA"/)
+  assert.match(publishJob, /--pattern "\$checksum_asset"/)
+  assert.match(
+    publishJob,
+    /cmp -s "\$checksum_asset" "\$existing_dir\/\$checksum_asset"/,
+  )
+  assert.match(publishJob, /remote_checksum_digest/)
+  assert.match(publishJob, /remote_checksum_size/)
+  assert.match(yaml, /cancel-in-progress: false/)
+})
+
+test('Start CLI is pinned and checksum-verified before execution', async () => {
+  const yaml = await workflow()
+  const url =
+    'https://github.com/Start9Labs/start-technologies/releases/download/start-cli/v1.1.0/start-cli_x86_64-linux'
+  assert.equal(yaml.split(url).length - 1, 2)
+  assert.equal(
+    yaml.split(
+      '70eff67b6e9a936acd8aaaf787b783819252ecedaa5c74d462e3b15ed4dd843a',
+    ).length - 1,
+    2,
+  )
+  assert.equal(yaml.match(/sha256sum -c -/g)?.length, 2)
+  assert.doesNotMatch(
+    yaml,
+    /api\.github\.com\/repos\/Start9Labs\/start-technologies\/releases/,
+  )
+
+  for (const job of [
+    yaml.match(/\n  package:[\s\S]*?(?=\n  publish:)/)?.[0],
+    yaml.match(/\n  publish:[\s\S]*/)?.[0],
+  ]) {
+    assert.ok(job)
+    const verification = job.indexOf('sha256sum -c -')
+    const execution = job.indexOf('run: start-cli ')
+    assert.ok(verification >= 0 && execution > verification)
+  }
+})
+
+test('Buzz source pin uses the independently reviewed migration repair commit', async () => {
+  const gitmodules = await readFile(
+    new URL('../.gitmodules', import.meta.url),
+    'utf8',
+  )
+  assert.match(gitmodules, /branch = fix\/startos-migration-5-checksum/)
+  const { stdout } = await execFile('git', ['-C', 'buzz', 'rev-parse', 'HEAD'])
+  assert.equal(stdout.trim(), '5617e7a286fc9b6a1bfbc5faecb27625c913523d')
+})
+
+test('alpha 3 is current and accepts upgrade from alpha 2', async () => {
+  const versions = await readFile(versionsPath, 'utf8')
+  assert.match(versions, /import \{ v_0_5_20_0_a3 \}/)
+  assert.match(versions, /export \{ v_0_5_20_0_a3 as current \}/)
+
+  const { manifest } = require('../javascript/index.js')
+  const {
+    ExtendedVersion,
+    VersionRange,
+  } = require('@start9labs/start-sdk/base/lib/exver')
+  const accepted = VersionRange.parse(manifest.canMigrateFrom).satisfiedBy(
+    ExtendedVersion.parse('0.5.20:1-alpha.2'),
+  )
+  assert.equal(
+    accepted,
+    true,
+    `manifest range rejected alpha.2: ${manifest.canMigrateFrom}`,
+  )
+})

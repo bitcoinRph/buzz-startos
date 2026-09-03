@@ -2,4 +2,4 @@
 	path = buzz
 	url = https://github.com/bitcoinRph/buzz.git
 	shallow = true
-	branch = startos-desktop-v0.5.20-checksum-normalize
+	branch = fix/startos-migration-5-checksum
