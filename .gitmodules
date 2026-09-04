@@ -2,4 +2,4 @@
 	path = buzz
 	url = https://github.com/bitcoinRph/buzz.git
 	shallow = true
-	branch = fix/startos-migration-5-checksum
+	branch = fix/startos-0.5.20-ios-migration-repair

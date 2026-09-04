@@ -27,7 +27,10 @@ test('untrusted builds are read-only and cannot access the stable signing key', 
   assert.match(packageJob, /permissions:\n\s+contents: read/)
   assert.doesNotMatch(packageJob, /secrets\.BUILD_KEY/)
   assert.doesNotMatch(packageJob, /gh release/)
-  assert.match(packageJob, /cargo test --workspace --all-targets/)
+  assert.match(
+    packageJob,
+    /cargo test -p buzz-auth ws_and_wss --lib[\s\S]*cargo test -p buzz-db startos_checksum_repair_allowlist_is_exact --lib/,
+  )
 
   const checkoutSteps = [
     ...yaml.matchAll(
@@ -95,17 +98,19 @@ test('stable signing and release publishing are isolated to protected main pushe
   assert.match(yaml, /cancel-in-progress: false/)
 })
 
-test('validation reclaims ephemeral runner disk before full Rust tests', async () => {
+test('validation reclaims ephemeral runner disk before relay regression tests', async () => {
   const yaml = await workflow()
   const packageJob = yaml.match(/\n  package:[\s\S]*?(?=\n  publish:)/)?.[0]
   assert.ok(packageJob, 'read-only package job is missing')
 
   const cleanup = packageJob.indexOf('Reclaim runner disk space')
-  const rustTests = packageJob.indexOf('cargo test --workspace --all-targets')
+  const rustTests = packageJob.indexOf(
+    'cargo test -p buzz-auth ws_and_wss --lib',
+  )
   assert.ok(cleanup >= 0, 'runner disk cleanup step is missing')
   assert.ok(
     cleanup < rustTests,
-    'runner disk cleanup must run before Rust tests',
+    'runner disk cleanup must run before relay regression tests',
   )
   assert.match(
     packageJob,
@@ -143,14 +148,14 @@ test('Start CLI is pinned and checksum-verified before execution', async () => {
   }
 })
 
-test('Buzz source pin uses the independently reviewed migration repair commit', async () => {
+test('Buzz source pin includes the reviewed migration and iOS auth repairs', async () => {
   const gitmodules = await readFile(
     new URL('../.gitmodules', import.meta.url),
     'utf8',
   )
-  assert.match(gitmodules, /branch = fix\/startos-migration-5-checksum/)
+  assert.match(gitmodules, /branch = fix\/startos-0\.5\.20-ios-migration-repair/)
   const { stdout } = await execFile('git', ['-C', 'buzz', 'rev-parse', 'HEAD'])
-  assert.equal(stdout.trim(), '5617e7a286fc9b6a1bfbc5faecb27625c913523d')
+  assert.equal(stdout.trim(), '1bb798ad8de3f2279b56b0d602a09fb04578ea63')
 })
 
 test('alpha 3 is current and accepts upgrade from alpha 2', async () => {

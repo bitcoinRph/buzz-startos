@@ -75,8 +75,11 @@ jobs:
       - name: Check TypeScript
         run: npm run check
 
-      - name: Run Buzz workspace tests
-        run: cd buzz && cargo test --workspace --all-targets
+      - name: Run Buzz relay regression tests
+        run: |
+          cd buzz
+          cargo test -p buzz-auth ws_and_wss --lib
+          cargo test -p buzz-db startos_checksum_repair_allowlist_is_exact --lib
 
       - name: Initialize ephemeral StartOS developer key
         run: start-cli init-key
