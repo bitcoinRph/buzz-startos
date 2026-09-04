@@ -95,6 +95,26 @@ test('stable signing and release publishing are isolated to protected main pushe
   assert.match(yaml, /cancel-in-progress: false/)
 })
 
+test('validation reclaims ephemeral runner disk before full Rust tests', async () => {
+  const yaml = await workflow()
+  const packageJob = yaml.match(/\n  package:[\s\S]*?(?=\n  publish:)/)?.[0]
+  assert.ok(packageJob, 'read-only package job is missing')
+
+  const cleanup = packageJob.indexOf('Reclaim runner disk space')
+  const rustTests = packageJob.indexOf('cargo test --workspace --all-targets')
+  assert.ok(cleanup >= 0, 'runner disk cleanup step is missing')
+  assert.ok(
+    cleanup < rustTests,
+    'runner disk cleanup must run before Rust tests',
+  )
+  assert.match(
+    packageJob,
+    /sudo rm -rf \/usr\/share\/dotnet \/usr\/local\/lib\/android \/opt\/ghc \/usr\/local\/share\/boost/,
+  )
+  assert.match(packageJob, /CARGO_INCREMENTAL: '0'/)
+  assert.match(packageJob, /CARGO_PROFILE_TEST_DEBUG: '0'/)
+})
+
 test('Start CLI is pinned and checksum-verified before execution', async () => {
   const yaml = await workflow()
   const url =
