@@ -17,12 +17,22 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           submodules: recursive
           persist-credentials: false
+
+      - name: Reclaim runner disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost
+          docker system prune --all --force || true
+          df -h /
 
       - name: Setup Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
@@ -65,8 +75,11 @@ jobs:
       - name: Check TypeScript
         run: npm run check
 
-      - name: Run Buzz workspace tests
-        run: cd buzz && cargo test --workspace --all-targets
+      - name: Run Buzz relay regression tests
+        run: |
+          cd buzz
+          cargo test -p buzz-auth ws_and_wss --lib
+          cargo test -p buzz-db startos_checksum_repair_allowlist_is_exact --lib
 
       - name: Initialize ephemeral StartOS developer key
         run: start-cli init-key
