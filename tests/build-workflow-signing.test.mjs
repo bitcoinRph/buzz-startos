@@ -153,27 +153,44 @@ test('Buzz source pin includes the reviewed migration and iOS auth repairs', asy
     new URL('../.gitmodules', import.meta.url),
     'utf8',
   )
-  assert.match(gitmodules, /branch = fix\/startos-0\.5\.20-ios-migration-repair/)
+  assert.match(gitmodules, /branch = claude\/buzz-startos-package-ng2p5g/)
   const { stdout } = await execFile('git', ['-C', 'buzz', 'rev-parse', 'HEAD'])
-  assert.equal(stdout.trim(), '1bb798ad8de3f2279b56b0d602a09fb04578ea63')
+  assert.equal(stdout.trim(), '942ee5218d70ce43bfd4a392531295d68f96b064')
+
+  // Pinning a SHA alone would not notice a future pin that silently drops the
+  // repairs, so assert the patched relay code itself is present.
+  const nip42 = await readFile(
+    new URL('../buzz/crates/buzz-auth/src/nip42.rs', import.meta.url),
+    'utf8',
+  )
+  assert.match(nip42, /fn relay_urls_match\(/)
+  assert.match(nip42, /fn ws_and_wss_same_authority_are_equivalent\(/)
+
+  const migration = await readFile(
+    new URL('../buzz/crates/buzz-db/src/runtime/migration.rs', import.meta.url),
+    'utf8',
+  )
+  assert.match(migration, /fn is_approved_startos_checksum_repair\(/)
+  assert.match(migration, /normalize_pre_release_migration_checksums\(conn\)/)
+  assert.match(migration, /fn startos_checksum_repair_allowlist_is_exact\(/)
 })
 
-test('alpha 3 is current and accepts upgrade from alpha 2', async () => {
+test('0.5.23 is current and accepts upgrade from 0.5.20 alpha 3', async () => {
   const versions = await readFile(versionsPath, 'utf8')
   assert.match(versions, /import \{ v_0_5_20_0_a3 \}/)
-  assert.match(versions, /export \{ v_0_5_20_0_a3 as current \}/)
+  assert.match(versions, /export \{ v_0_5_23_0 as current \}/)
 
   const { manifest } = require('../javascript/index.js')
   const {
     ExtendedVersion,
     VersionRange,
   } = require('@start9labs/start-sdk/base/lib/exver')
-  const accepted = VersionRange.parse(manifest.canMigrateFrom).satisfiedBy(
-    ExtendedVersion.parse('0.5.20:1-alpha.2'),
-  )
-  assert.equal(
-    accepted,
-    true,
-    `manifest range rejected alpha.2: ${manifest.canMigrateFrom}`,
-  )
+  const range = VersionRange.parse(manifest.canMigrateFrom)
+  for (const installed of ['0.5.20:1-alpha.3', '0.5.20:1-alpha.2']) {
+    assert.equal(
+      range.satisfiedBy(ExtendedVersion.parse(installed)),
+      true,
+      `manifest range rejected ${installed}: ${manifest.canMigrateFrom}`,
+    )
+  }
 })

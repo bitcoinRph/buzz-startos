@@ -17,8 +17,10 @@ export const manifest = setupManifest({
     buzz: {
       // Build from the pinned Buzz submodule so StartOS can carry small relay
       // compatibility patches before they are available in the public image.
-      // This package includes desktop-v0.5.20 source plus StartOS migration-checksum
-      // normalization for brownfield pre-release databases.
+      // This package includes desktop-v0.5.23 source plus two StartOS patches:
+      // NIP-42 ws/wss scheme tolerance (Buzz iOS auth behind TLS termination)
+      // and migration-checksum normalization for brownfield pre-release
+      // databases. Both are covered by the relay regression tests in CI.
       source: { dockerBuild: { workdir: './buzz' } },
       arch: ['x86_64', 'aarch64'],
     },
