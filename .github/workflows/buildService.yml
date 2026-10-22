@@ -77,9 +77,13 @@ jobs:
 
       - name: Run Buzz relay regression tests
         run: |
+          rustup toolchain install 1.95.0 --profile minimal
           cd buzz
+          rustup override set 1.95.0
           cargo test -p buzz-auth ws_and_wss --lib
           cargo test -p buzz-db startos_checksum_repair_allowlist_is_exact --lib
+          cargo test --locked -p buzz-auth
+          cargo test --locked -p buzz-db -- --test-threads=1
 
       - name: Initialize ephemeral StartOS developer key
         run: start-cli init-key
@@ -88,14 +92,18 @@ jobs:
         run: start-cli s9pk init-workspace ..
 
       - name: Build validation package
-        run: make x86_64
+        run: |
+          make x86_64
+          sha256sum buzz_x86_64.s9pk > buzz_x86_64.s9pk.sha256
 
       - name: Upload validation artifact
-        continue-on-error: true
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: buzz_x86_64-${{ github.sha }}
-          path: buzz_x86_64.s9pk
+          path: |
+            buzz_x86_64.s9pk
+            buzz_x86_64.s9pk.sha256
+          if-no-files-found: error
           retention-days: 3
 
   publish:

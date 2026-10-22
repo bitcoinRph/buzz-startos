@@ -153,27 +153,31 @@ test('Buzz source pin includes the reviewed migration and iOS auth repairs', asy
     new URL('../.gitmodules', import.meta.url),
     'utf8',
   )
-  assert.match(gitmodules, /branch = fix\/startos-0\.5\.20-ios-migration-repair/)
+  assert.match(gitmodules, /url = https:\/\/github.com\/block\/buzz.git/)
   const { stdout } = await execFile('git', ['-C', 'buzz', 'rev-parse', 'HEAD'])
-  assert.equal(stdout.trim(), '1bb798ad8de3f2279b56b0d602a09fb04578ea63')
+  assert.equal(stdout.trim(), 'f87c10895ea35a9a2cea629fef1d7532a3fecbc5')
+  for (const [path, expression] of [
+    ['crates/buzz-auth/src/nip42.rs', /fn ws_and_wss_same_authority_are_equivalent\(/],
+    ['crates/buzz-db/src/runtime/migration.rs', /fn startos_checksum_repair_allowlist_is_exact\(/],
+  ]) {
+    assert.match(await readFile(new URL(`../buzz/${path}`, import.meta.url), 'utf8'), expression)
+  }
 })
 
-test('alpha 3 is current and accepts upgrade from alpha 2', async () => {
+test('tagged snapshot accepts installed alpha upgrades without empty history nodes', async () => {
   const versions = await readFile(versionsPath, 'utf8')
-  assert.match(versions, /import \{ v_0_5_20_0_a3 \}/)
-  assert.match(versions, /export \{ v_0_5_20_0_a3 as current \}/)
+  assert.match(versions, /export \{ current \} from '\.\.\/\.\.\/versions\/current'/)
+  assert.match(versions, /export const other = \[\]/)
 
   const { manifest } = require('../javascript/index.js')
   const {
     ExtendedVersion,
     VersionRange,
   } = require('@start9labs/start-sdk/base/lib/exver')
-  const accepted = VersionRange.parse(manifest.canMigrateFrom).satisfiedBy(
-    ExtendedVersion.parse('0.5.20:1-alpha.2'),
-  )
-  assert.equal(
-    accepted,
-    true,
-    `manifest range rejected alpha.2: ${manifest.canMigrateFrom}`,
-  )
+  assert.equal(manifest.version, '0.5.28:0')
+  for (const installed of ['0.5.20:1-alpha.2', '0.5.20:1-alpha.3', '0.5.23:0']) {
+    assert.equal(VersionRange.parse(manifest.canMigrateFrom).satisfiedBy(
+      ExtendedVersion.parse(installed)), true,
+      `manifest range rejected ${installed}: ${manifest.canMigrateFrom}`)
+  }
 })
