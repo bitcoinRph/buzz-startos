@@ -15,4 +15,6 @@ RUN case "$TARGETARCH" in \
 FROM alpine:3.22.2
 RUN apk add --no-cache ca-certificates
 COPY --from=download /mc /usr/bin/mc
+COPY LICENSE /usr/share/licenses/mc/LICENSE
+COPY NOTICE.md /usr/share/doc/mc/NOTICE.md
 ENTRYPOINT ["/usr/bin/mc"]

@@ -17,5 +17,6 @@ FROM alpine:3.22.2
 RUN apk add --no-cache ca-certificates
 COPY --from=build /out/minio /usr/bin/minio
 COPY --from=build /src/LICENSE /usr/share/licenses/minio/LICENSE
+COPY NOTICE.md /usr/share/doc/minio/NOTICE.md
 ENTRYPOINT ["/usr/bin/minio"]
 CMD ["server", "/data"]

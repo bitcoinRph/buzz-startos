@@ -2,11 +2,18 @@ name: Package
 
 on:
   workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact reviewed full commit SHA on the selected branch
+        required: true
+        type: string
   pull_request:
     paths-ignore: ['*.md']
   push:
     paths-ignore: ['*.md']
     branches: ['main']
+
+permissions: {}
 
 concurrency:
   group: package-release-${{ github.ref }}
@@ -14,18 +21,37 @@ concurrency:
 
 jobs:
   package:
+    # Never run PR-controlled code with a write token from an untrusted fork/bot.
+    if: >-
+      github.actor != 'dependabot[bot]' &&
+      (github.event_name != 'pull_request' ||
+       (github.event.pull_request.user.login != 'dependabot[bot]' &&
+        github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
     env:
+      HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       CARGO_INCREMENTAL: '0'
       CARGO_PROFILE_TEST_DEBUG: '0'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           submodules: recursive
           persist-credentials: false
+
+      - name: Verify reviewed checkout and dispatch SHA
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$HEAD_SHA"
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            test "$EXPECTED_SHA" = "$HEAD_SHA"
+          fi
+          python3 tests/direct-release.test.py
 
       - name: Reclaim runner disk space
         run: |
@@ -96,137 +122,7 @@ jobs:
           make x86_64
           sha256sum buzz_x86_64.s9pk > buzz_x86_64.s9pk.sha256
 
-      - name: Upload validation artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: buzz_x86_64-${{ github.sha }}
-          path: |
-            buzz_x86_64.s9pk
-            buzz_x86_64.s9pk.sha256
-          if-no-files-found: error
-          retention-days: 3
-
-  publish:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: package
-    runs-on: ubuntu-latest
-    environment: package-signing
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout trusted main commit
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          ref: ${{ github.sha }}
-          submodules: recursive
-          persist-credentials: false
-
-      - name: Setup Node
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Install packaging tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y make buildah fuse-overlayfs slirp4netns uidmap squashfs-tools squashfs-tools-ng jq pkg-config libssl-dev
-
-      - name: Configure Docker Buildx
-        run: |
-          docker buildx create --name startos-builder --driver docker-container --use
-          docker buildx inspect --bootstrap
-
-      - name: Configure container registries
-        run: |
-          sudo mkdir -p /etc/containers/registries.conf.d
-          printf 'unqualified-search-registries = ["docker.io"]\n' | sudo tee /etc/containers/registries.conf.d/99-dockerio.conf
-
-      - name: Install pinned Start CLI
-        env:
-          START_CLI_URL: https://github.com/Start9Labs/start-technologies/releases/download/start-cli/v1.1.0/start-cli_x86_64-linux
-          START_CLI_SHA256: 70eff67b6e9a936acd8aaaf787b783819252ecedaa5c74d462e3b15ed4dd843a
-        run: |
-          mkdir -p "$HOME/.local/bin"
-          curl -fsSL "$START_CLI_URL" -o "$HOME/.local/bin/start-cli"
-          printf '%s  %s\n' "$START_CLI_SHA256" "$HOME/.local/bin/start-cli" | sha256sum -c -
-          chmod +x "$HOME/.local/bin/start-cli"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - name: Install npm dependencies
-        run: npm ci
-
-      - name: Run wrapper tests
-        run: npm test
-
-      - name: Check TypeScript
-        run: npm run check
-
-      - name: Initialize StartOS packaging workspace
-        run: start-cli s9pk init-workspace ..
-
-      - name: Install protected package signing key
-        env:
-          BUILD_KEY: ${{ secrets.BUILD_KEY }}
-        run: |
-          umask 077
-          test -n "$BUILD_KEY" || { echo 'BUILD_KEY is not configured in package-signing' >&2; exit 1; }
-          printf '%s\n' "$BUILD_KEY" > ../.startos/build.key.pem
-          chmod 600 ../.startos/build.key.pem
-
-      - name: Build signed package
-        run: make x86_64
-
-      - name: Remove package signing key
-        if: always()
-        run: rm -f ../.startos/build.key.pem
-
-      - name: Publish immutable signed package release
+      - name: Deliver validation assets directly to a new draft RC
         env:
           GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.sha }}
-        run: |
-          package="buzz_x86_64.s9pk"
-          checksum_asset="${package}.sha256"
-          tag="dev-build-${HEAD_SHA}"
-          package_sha="$(sha256sum "$package" | cut -d ' ' -f1)"
-          package_size="$(stat -c %s "$package")"
-          printf '%s  %s\n' "$package_sha" "$package" > "$checksum_asset"
-          checksum_sha="$(sha256sum "$checksum_asset" | cut -d ' ' -f1)"
-          checksum_size="$(stat -c %s "$checksum_asset")"
-
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            existing_dir="$(mktemp -d)"
-            gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
-              --pattern "$package" \
-              --pattern "$checksum_asset" \
-              --dir "$existing_dir"
-            existing_sha="$(sha256sum "$existing_dir/$package" | cut -d ' ' -f1)"
-            test "$existing_sha" = "$package_sha" || {
-              echo "immutable release $tag already exists with different package bytes" >&2
-              exit 1
-            }
-            cmp -s "$checksum_asset" "$existing_dir/$checksum_asset" || {
-              echo "immutable release $tag already exists with a different checksum sidecar" >&2
-              exit 1
-            }
-          else
-            gh release create "$tag" "$package" "$checksum_asset" \
-              --repo "$GITHUB_REPOSITORY" \
-              --target "$HEAD_SHA" \
-              --prerelease \
-              --title "Dev build ${HEAD_SHA:0:7}" \
-              --notes "Immutable signed Buzz package build of commit ${HEAD_SHA}."
-          fi
-
-          release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag")"
-          remote_digest="$(printf '%s' "$release_json" | jq -r --arg name "$package" '.assets[] | select(.name == $name) | .digest // empty')"
-          remote_size="$(printf '%s' "$release_json" | jq -r --arg name "$package" '.assets[] | select(.name == $name) | .size // empty')"
-          remote_checksum_digest="$(printf '%s' "$release_json" | jq -r --arg name "$checksum_asset" '.assets[] | select(.name == $name) | .digest // empty')"
-          remote_checksum_size="$(printf '%s' "$release_json" | jq -r --arg name "$checksum_asset" '.assets[] | select(.name == $name) | .size // empty')"
-          remote_tag_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha)"
-          test "$remote_digest" = "sha256:$package_sha"
-          test "$remote_size" = "$package_size"
-          test "$remote_checksum_digest" = "sha256:$checksum_sha"
-          test "$remote_checksum_size" = "$checksum_size"
-          test "$remote_tag_sha" = "$HEAD_SHA"
+        run: python3 scripts/direct-release.py

@@ -58,9 +58,12 @@ StartOS lifecycle, backups or ARM runtime. Live sideload stays on hold.
 ## Post-tag divergence
 
 Official main at review: 347ce88d5dd8bc631c073f1947fea6b75d5a43c0, 67 migrations.
-It is NOT packaged here. Main contains post-tag private-event deletion metadata
-and existence-oracle fixes, dependency advisory updates, bounded reads, push
-post-commit work, and a pgschema runtime-partition preservation fix. The wrapper
-uses SQLx, not pgschema; do not claim latest-tagged means every main fix is present.
-Adopting main or backporting those changes is a separate parent target decision,
-not an unreviewed source-channel switch.
+It is NOT packaged wholesale here. The tracked patch now backports the reviewed
+private-deletion and existence-oracle fixes plus five precise lockfile updates;
+see [patches/SECURITY.md](patches/SECURITY.md) for exact commits and boundaries.
+No new SQL migrations are included (still 57, not main's 67). Main's bounded-read
+fix, push post-commit work, and pgschema runtime-partition fix remain absent.
+The wrapper uses SQLx, not pgschema; latest-tagged plus these backports is NOT
+full main parity or a clean vulnerability audit. Release/install remain held.
+Adopting main or completing the remaining security work needs a separate reviewed
+target decision, not an unreviewed source-channel switch.
