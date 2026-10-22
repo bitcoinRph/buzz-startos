@@ -47,3 +47,11 @@ them, but they are available for advanced debugging or data export.
 
 All persistent data (database, media, settings) lives on this service's data
 volume and is included in standard StartOS backups.
+
+Before upgrading from the desktop-v0.5.20-based package, make and verify a
+recovery backup. This alpha-quality desktop-v0.5.28 relay snapshot applies
+database migrations 33–57 forward on startup; it is not a stable relay release.
+Do not downgrade the migrated database or reset it as an upgrade shortcut.
+Keep the canonical hostname unchanged. The carried legacy migration-5 repair
+recognizes only one known checksum; unknown drift fails closed and needs
+operator investigation, not automatic rewriting.
