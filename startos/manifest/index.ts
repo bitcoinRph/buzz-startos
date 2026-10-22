@@ -17,8 +17,8 @@ export const manifest = setupManifest({
     buzz: {
       // Build from the pinned Buzz submodule so StartOS can carry small relay
       // compatibility patches before they are available in the public image.
-      // Official desktop-v0.5.28 snapshot, not a stable relay release.
-      // scripts/prepare-source.sh applies the reviewed auth/checksum patch.
+      // This package includes desktop-v0.5.20 source plus StartOS migration-checksum
+      // normalization for brownfield pre-release databases.
       source: { dockerBuild: { workdir: './buzz' } },
       arch: ['x86_64', 'aarch64'],
     },
@@ -31,11 +31,11 @@ export const manifest = setupManifest({
       arch: ['x86_64', 'aarch64'],
     },
     minio: {
-      source: { dockerBuild: { workdir: './storage/minio' } },
+      source: { dockerTag: 'minio/minio:RELEASE.2025-09-07T16-13-09Z' },
       arch: ['x86_64', 'aarch64'],
     },
     mc: {
-      source: { dockerBuild: { workdir: './storage/mc' } },
+      source: { dockerTag: 'minio/mc:RELEASE.2025-08-13T08-35-41Z' },
       arch: ['x86_64', 'aarch64'],
     },
   },

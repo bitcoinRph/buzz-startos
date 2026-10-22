@@ -1,7 +1,7 @@
 {
   "name": "buzz-startos",
   "scripts": {
-    "build": "sh scripts/prepare-source.sh && rm -rf ./javascript && ncc build startos/index.ts -o ./javascript",
+    "build": "rm -rf ./javascript && ncc build startos/index.ts -o ./javascript",
     "test": "npm run build && node --test tests/*.test.mjs",
     "prettier": "prettier --write startos",
     "check": "tsc --noEmit"
