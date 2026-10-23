@@ -1,0 +1,4904 @@
+diff --git a/.github/workflows/_ci-relay.yml b/.github/workflows/_ci-relay.yml
+index b6cab48aaf16232f7330d457c081ef205cdcbc5f..a0fa0a4ae83b6025f7a98a9a56e638ee6a562269 100644
+--- a/.github/workflows/_ci-relay.yml
++++ b/.github/workflows/_ci-relay.yml
+@@ -110,6 +110,8 @@ jobs:
+             -p buzz-test-client \
+             --lib \
+             --test e2e_event_reminder \
++            --test e2e_author_only_deletion \
++            --test e2e_existence_oracle \
+             --archive-file target/ci/backend-integration-tests.tar.zst
+       - name: Build PostgreSQL test archive
+         if: steps.relay-artifacts-cache.outputs.cache-hit != 'true' && matrix.artifact == 'postgres-tests'
+@@ -580,10 +582,12 @@ jobs:
+         run: |
+           cargo nextest run \
+             --archive-file target/ci/backend-integration-tests.tar.zst \
+-            -E 'binary(e2e_event_reminder)' \
++            -E 'binary(e2e_event_reminder) | binary(e2e_author_only_deletion) | binary(e2e_existence_oracle)' \
+             --run-ignored ignored-only
+         env:
+           RELAY_URL: ws://localhost:3000
++          # schema/schema.sql (applied above) indexes kind:5 content.
++          BUZZ_TEST_SEARCH_INDEXES_DELETIONS: "1"
+       - name: Upload relay log
+         if: failure()
+         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+diff --git a/Cargo.lock b/Cargo.lock
+index 15b190f8aed10479e46af312c8a473be962be3e8..830d3d06a08083689550032f9829ae57f8cc7266 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -507,7 +507,7 @@ dependencies = [
+  "serde",
+  "serde_json",
+  "url",
+- "webpki-roots 1.0.7",
++ "webpki-roots 1.0.10",
+ ]
+ 
+ [[package]]
+@@ -4073,7 +4073,7 @@ dependencies = [
+  "tokio",
+  "tokio-rustls",
+  "tower-service",
+- "webpki-roots 1.0.7",
++ "webpki-roots 1.0.10",
+ ]
+ 
+ [[package]]
+@@ -4610,7 +4610,7 @@ dependencies = [
+  "tokio-websockets",
+  "tracing",
+  "url",
+- "webpki-roots 1.0.7",
++ "webpki-roots 1.0.10",
+  "ws_stream_wasm",
+ ]
+ 
+@@ -6212,9 +6212,9 @@ checksum = "27b02d87554356db9e9a873add8782d4ea6e3e58ea071a9adb9a2e8ddb884a8b"
+ 
+ [[package]]
+ name = "negentropy"
+-version = "0.5.0"
++version = "0.5.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "f0efe882e02d206d8d279c20eb40e03baf7cb5136a1476dc084a324fbc3ec42d"
++checksum = "a3d66662cb5ca384d4991509755ed5a42dd8e31c4282bf881938e506fc3146ec"
+ 
+ [[package]]
+ name = "netdev"
+@@ -8483,7 +8483,7 @@ dependencies = [
+  "wasm-bindgen-futures",
+  "wasm-streams 0.4.2",
+  "web-sys",
+- "webpki-roots 1.0.7",
++ "webpki-roots 1.0.10",
+ ]
+ 
+ [[package]]
+@@ -8761,9 +8761,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "rustls"
+-version = "0.23.45"
++version = "0.23.46"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "0d41d731c7d2f962d1ccc364cec258de3c0e93b38c2fb3ba97ac74513048d634"
++checksum = "48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf"
+ dependencies = [
+  "aws-lc-rs",
+  "log",
+@@ -8826,9 +8826,9 @@ checksum = "f87165f0995f63a9fbeea62b64d10b4d9d8e78ec6d7d51fb2125fda7bb36788f"
+ 
+ [[package]]
+ name = "rustls-webpki"
+-version = "0.103.15"
++version = "0.103.16"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "f3c3cf1d8b1e7d4927e2d154c3fcb02979afb9939629c62cd9048d4f07b60ac2"
++checksum = "4443b1b6d39d7c663139942cc4558262562d2c84123bb6282ef177009ca8b281"
+ dependencies = [
+  "aws-lc-rs",
+  "ring",
+@@ -9825,7 +9825,7 @@ dependencies = [
+  "tracing",
+  "url",
+  "uuid",
+- "webpki-roots 1.0.7",
++ "webpki-roots 1.0.10",
+ ]
+ 
+ [[package]]
+@@ -11556,9 +11556,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "webpki-root-certs"
+-version = "1.0.7"
++version = "1.0.10"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "f31141ce3fc3e300ae89b78c0dd67f9708061d1d2eda54b8209346fd6be9a92c"
++checksum = "58ec80e73fd8baf57bf0d9615554c75348bda990d6d5bbeab964dd068319fecb"
+ dependencies = [
+  "rustls-pki-types",
+ ]
+@@ -11569,14 +11569,14 @@ version = "0.26.11"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "521bc38abb08001b01866da9f51eb7c5d647a19260e00054a8c7fd5f9e57f7a9"
+ dependencies = [
+- "webpki-roots 1.0.7",
++ "webpki-roots 1.0.10",
+ ]
+ 
+ [[package]]
+ name = "webpki-roots"
+-version = "1.0.7"
++version = "1.0.10"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "52f5ee44c96cf55f1b349600768e3ece3a8f26010c05265ab73f945bb1a2eb9d"
++checksum = "1c1c8e20c8a38fc7d65abfe74eb7280e4aa667e8eec8bc84996d2874810748d9"
+ dependencies = [
+  "rustls-pki-types",
+ ]
+diff --git a/crates/buzz-auth/src/nip42.rs b/crates/buzz-auth/src/nip42.rs
+index 8ee7c908907835a9c26259db0094cef2b4eec925..4047f722296ed049a6df5ccbd1cd8c7ad2ad3f31 100644
+--- a/crates/buzz-auth/src/nip42.rs
++++ b/crates/buzz-auth/src/nip42.rs
+@@ -32,6 +32,33 @@ fn normalize_relay_url(raw: &str) -> String {
+     parsed.to_string()
+ }
+ 
++fn relay_urls_match(actual: &str, expected: &str) -> bool {
++    let actual_normalized = normalize_relay_url(actual);
++    let expected_normalized = normalize_relay_url(expected);
++    if actual_normalized == expected_normalized {
++        return true;
++    }
++
++    // Buzz mobile invite links already carry `wss://`, but affected builds
++    // derive their socket URL by coercing every non-HTTPS scheme to `ws://`.
++    // Behind StartOS TLS termination the connection still reaches the same
++    // host:port, so accept only the ws<->wss scheme alias when every other URL
++    // component normalizes to the expected relay URL. This preserves the
++    // host/port replay boundary while tolerating the client canonicalization bug.
++    let (Ok(mut actual_url), Ok(expected_url)) = (Url::parse(actual), Url::parse(expected)) else {
++        return false;
++    };
++    if !matches!(actual_url.scheme(), "ws" | "wss")
++        || !matches!(expected_url.scheme(), "ws" | "wss")
++    {
++        return false;
++    }
++    if actual_url.set_scheme(expected_url.scheme()).is_err() {
++        return false;
++    }
++    normalize_relay_url(actual_url.as_str()) == expected_normalized
++}
++
+ const TIMESTAMP_TOLERANCE_SECS: u64 = 60;
+ 
+ /// Generate a random NIP-42 challenge (32 CSPRNG bytes, hex-encoded).
+@@ -71,7 +98,7 @@ pub fn verify_nip42_event(
+         .and_then(|t| t.content())
+         .ok_or(AuthError::RelayUrlMismatch)?;
+ 
+-    if normalize_relay_url(relay) != normalize_relay_url(relay_url) {
++    if !relay_urls_match(relay, relay_url) {
+         return Err(AuthError::RelayUrlMismatch);
+     }
+ 
+@@ -167,6 +194,72 @@ mod tests {
+         ));
+     }
+ 
++    #[test]
++    fn ws_and_wss_same_authority_are_equivalent() {
++        let keys = Keys::generate();
++        let challenge = generate_challenge();
++        for (actual, expected) in [
++            (
++                "ws://rusty-fingers.local:50596",
++                "wss://rusty-fingers.local:50596",
++            ),
++            (
++                "wss://rusty-fingers.local:50596/relay",
++                "ws://rusty-fingers.local:50596/relay",
++            ),
++            ("ws://relay.example/relay/", "wss://relay.example/relay"),
++        ] {
++            let event = make_auth_event(&keys, &challenge, actual);
++            assert!(
++                verify_nip42_event(&event, &challenge, expected).is_ok(),
++                "{actual} vs {expected}"
++            );
++        }
++    }
++
++    #[test]
++    fn ws_and_wss_different_authority_or_path_are_rejected() {
++        let keys = Keys::generate();
++        let challenge = generate_challenge();
++        for (actual, expected) in [
++            (
++                "ws://rusty-fingers.local:50596",
++                "wss://rusty-fingers.local",
++            ),
++            (
++                "wss://rusty-fingers.local:50596",
++                "ws://rusty-fingers.local:50597",
++            ),
++            ("ws://other.local:50596", "wss://rusty-fingers.local:50596"),
++            ("ws://relay.example/other", "wss://relay.example/relay"),
++            (
++                "wss://relay.example/relay",
++                "ws://relay.example/relay/child",
++            ),
++            (
++                "ws://relay.example/relay?a=1",
++                "wss://relay.example/relay?a=2",
++            ),
++            (
++                "ws://relay.example:80/relay",
++                "wss://relay.example:80/relay",
++            ),
++            (
++                "wss://relay.example:443/relay",
++                "ws://relay.example:443/relay",
++            ),
++        ] {
++            let event = make_auth_event(&keys, &challenge, actual);
++            assert!(
++                matches!(
++                    verify_nip42_event(&event, &challenge, expected),
++                    Err(AuthError::RelayUrlMismatch)
++                ),
++                "{actual} vs {expected}"
++            );
++        }
++    }
++
+     #[test]
+     fn localhost_and_127_are_equivalent() {
+         let a = normalize_relay_url("ws://localhost:3030");
+diff --git a/crates/buzz-core/src/kind.rs b/crates/buzz-core/src/kind.rs
+index 32d8959fb6917573b8399d913bad195a3d21c08a..9b8ca85866ba3fd6aaa0e5e9ff943d78e5c4d540 100644
+--- a/crates/buzz-core/src/kind.rs
++++ b/crates/buzz-core/src/kind.rs
+@@ -132,6 +132,35 @@ pub const AUTHOR_ONLY_KINDS: &[u32] = &[
+     KIND_PRIVATE_MANAGED_AGENT,
+ ];
+ 
++/// Returns `true` if the event is readable only by its author: an
++/// [`AUTHOR_ONLY_KINDS`] event, or a NIP-09 deletion whose `k` tag names one.
++///
++/// A deletion request reveals its targets' ids and deletion timing, so it
++/// inherits the target's privacy. It is classified by its own `k` tag, not by
++/// a target lookup, so it stays private after the target is gone; ingest
++/// rejects a deletion of a stored author-only event without that tag.
++pub fn is_author_only_event_kind(event: &nostr::Event) -> bool {
++    let kind = event_kind_u32(event);
++    if AUTHOR_ONLY_KINDS.contains(&kind) {
++        return true;
++    }
++    kind == KIND_DELETION && k_tag_kinds(event).any(|k| AUTHOR_ONLY_KINDS.contains(&k))
++}
++
++/// Kinds named by an event's well-formed `["k", "<kind>"]` tags.
++///
++/// Only canonical decimal values count (`"30300"`, not `"030300"` or
++/// `"+30300"`), so this agrees with SQL that matches the tag value as text.
++pub fn k_tag_kinds(event: &nostr::Event) -> impl Iterator<Item = u32> + '_ {
++    event.tags.iter().filter_map(|tag| match tag.as_slice() {
++        [name, value, ..] if name == "k" => value
++            .parse::<u32>()
++            .ok()
++            .filter(|kind| kind.to_string() == *value),
++        _ => None,
++    })
++}
++
+ /// Kinds that require a result-level read gate beyond the filter-layer
+ /// `#p` check: even a reader who knows an event id MUST match the event's
+ /// `#p` tag to receive the event. This closes the kindless `{ids:[…]}` read
+@@ -968,6 +997,41 @@ mod tests {
+             .unwrap()
+     }
+ 
++    #[test]
++    fn deletion_privacy_follows_its_k_tag() {
++        for &kind in AUTHOR_ONLY_KINDS {
++            let k = kind.to_string();
++            assert!(is_author_only_event_kind(&make_event_of_kind(kind, &[])));
++            assert!(is_author_only_event_kind(&make_event_of_kind(
++                KIND_DELETION,
++                &[&["e", &"ab".repeat(32)], &["k", &k]]
++            )));
++            assert!(is_author_only_event_kind(&make_event_of_kind(
++                KIND_DELETION,
++                &[&["k", "1"], &["k", &k]]
++            )));
++        }
++        for tags in [
++            &[][..],
++            &[&["k", "1"][..]][..],
++            &[&["k", "not-a-kind"][..]][..],
++            // Non-canonical spellings are not markers; SQL matches text.
++            &[&["k", "030300"][..]][..],
++            &[&["k", "+30300"][..]][..],
++            &[&["k", " 30300"][..]][..],
++        ] {
++            assert!(!is_author_only_event_kind(&make_event_of_kind(
++                KIND_DELETION,
++                tags
++            )));
++        }
++        // A `k` tag classifies only deletions.
++        assert!(!is_author_only_event_kind(&make_event_of_kind(
++            1,
++            &[&["k", &KIND_EVENT_REMINDER.to_string()]]
++        )));
++    }
++
+     fn make_persona_event(tags: &[&[&str]]) -> nostr::Event {
+         make_event_of_kind(KIND_PERSONA, tags)
+     }
+diff --git a/crates/buzz-db/src/runtime/migration.rs b/crates/buzz-db/src/runtime/migration.rs
+index 63466f762f40a53372e7cb4b21e73f18cbc9a7cc..5074cd10e28cbf796c96f4e0f1db1c8341ed862d 100644
+--- a/crates/buzz-db/src/runtime/migration.rs
++++ b/crates/buzz-db/src/runtime/migration.rs
+@@ -8,12 +8,24 @@
+ use std::future::Future;
+ 
+ use sqlx::{Connection, PgConnection, PgPool};
++use tracing::warn;
+ 
+ use crate::deletion::SCHEMA_DESTRUCTION_LOCK_KEY;
+ use crate::Result;
+ 
+ static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../../migrations");
+ 
++const STARTOS_LEGACY_MIGRATION_5_CHECKSUM_HEX: &str =
++    "5f9698c29a6826e7d7826e80745634f4c0db449ab3acfdfb90caee3e86e5e805bf780fd548c9cfa4dcf7e2e5dd13e42a";
++const STARTOS_DESKTOP_0_5_20_MIGRATION_5_CHECKSUM_HEX: &str =
++    "84cf1c768d80480a07bea5b43b83b83d2ff0c3809d2011dcfb751be6a34177c7aab67a9cc2ae8968f50a513edd7d8e83";
++
++fn is_approved_startos_checksum_repair(version: i64, stored: &[u8], embedded: &[u8]) -> bool {
++    version == 5
++        && hex::encode(stored) == STARTOS_LEGACY_MIGRATION_5_CHECKSUM_HEX
++        && hex::encode(embedded) == STARTOS_DESKTOP_0_5_20_MIGRATION_5_CHECKSUM_HEX
++}
++
+ /// Run all pending Buzz database migrations.
+ ///
+ /// The entire run holds the exclusive [`SCHEMA_DESTRUCTION_LOCK_KEY`] session
+@@ -49,6 +61,7 @@ pub(crate) async fn run_migrations_through(pool: &PgPool, target: i64) -> Result
+ 
+ async fn run_migrations_locked(conn: &mut PgConnection) -> Result<()> {
+     reject_legacy_nip_rs_cardinality_ambiguity(conn).await?;
++    normalize_pre_release_migration_checksums(conn).await?;
+     MIGRATOR.run(&mut *conn).await?;
+     // The replica-fence proof (see `replica_fence`) requires the commit-time
+     // `created_at` floor trigger from migration 0021 — correctly shaped — on
+@@ -62,6 +75,67 @@ async fn run_migrations_locked(conn: &mut PgConnection) -> Result<()> {
+     Ok(())
+ }
+ 
++/// One StartOS pre-release image shipped migration 5 with a checksum that no
++/// longer matches the otherwise-compatible desktop-v0.5.20 SQL. SQLx refuses
++/// to apply pending migrations until that known drift is repaired.
++///
++/// This repair is deliberately allowlisted and fail-closed: it changes only a
++/// successful migration-5 row whose stored checksum exactly matches the known
++/// legacy StartOS checksum, and only when this binary embeds the expected
++/// desktop-v0.5.20 replacement. Every unknown mismatch is left untouched for
++/// SQLx to reject normally.
++async fn normalize_pre_release_migration_checksums(conn: &mut PgConnection) -> Result<()> {
++    let migrations_table: Option<String> =
++        sqlx::query_scalar("SELECT to_regclass('_sqlx_migrations')::text")
++            .fetch_one(&mut *conn)
++            .await?;
++    if migrations_table.is_none() {
++        return Ok(());
++    }
++
++    let migration = MIGRATOR
++        .iter()
++        .find(|migration| migration.version == 5)
++        .ok_or_else(|| {
++            crate::DbError::InvalidData(
++                "StartOS checksum repair requires embedded migration 5".to_owned(),
++            )
++        })?;
++    let embedded_checksum = migration.checksum.as_ref().to_vec();
++    let stored_checksum: Option<Vec<u8>> =
++        sqlx::query_scalar("SELECT checksum FROM _sqlx_migrations WHERE version = $1 AND success")
++            .bind(migration.version)
++            .fetch_optional(&mut *conn)
++            .await?;
++
++    let Some(stored_checksum) = stored_checksum else {
++        return Ok(());
++    };
++    if !is_approved_startos_checksum_repair(migration.version, &stored_checksum, &embedded_checksum)
++    {
++        return Ok(());
++    }
++
++    let updated = sqlx::query(
++        "UPDATE _sqlx_migrations SET checksum = $1 \
++         WHERE version = $2 AND success AND checksum = $3",
++    )
++    .bind(&embedded_checksum)
++    .bind(migration.version)
++    .bind(&stored_checksum)
++    .execute(&mut *conn)
++    .await?
++    .rows_affected();
++
++    if updated == 1 {
++        warn!(
++            "Normalized the known StartOS pre-release migration-5 checksum before running remaining migrations"
++        );
++    }
++
++    Ok(())
++}
++
+ /// Run `op` while holding the exclusive schema/destruction session lock.
+ ///
+ /// `op` receives ownership of the detached connection that owns the advisory
+@@ -188,6 +262,51 @@ async fn reject_legacy_nip_rs_cardinality_ambiguity(conn: &mut PgConnection) ->
+ #[cfg(test)]
+ mod postgres_tests {
+     use super::*;
++
++    #[test]
++    fn startos_checksum_repair_allowlist_is_exact() {
++        let migration = MIGRATOR
++            .iter()
++            .find(|migration| migration.version == 5)
++            .expect("embedded migration 5");
++        let embedded = migration.checksum.as_ref();
++        let legacy = hex::decode(STARTOS_LEGACY_MIGRATION_5_CHECKSUM_HEX)
++            .expect("valid legacy checksum hex");
++
++        assert!(is_approved_startos_checksum_repair(5, &legacy, embedded));
++        for version in [i64::MIN, -1, 0, 1, 4, 6, 32, i64::MAX] {
++            assert!(!is_approved_startos_checksum_repair(
++                version, &legacy, embedded
++            ));
++        }
++        assert!(!is_approved_startos_checksum_repair(5, embedded, &legacy));
++        assert!(!is_approved_startos_checksum_repair(5, embedded, embedded));
++        assert!(!is_approved_startos_checksum_repair(
++            5,
++            &legacy[..47],
++            embedded
++        ));
++        assert!(!is_approved_startos_checksum_repair(
++            5,
++            &legacy,
++            &embedded[..47]
++        ));
++        assert!(!is_approved_startos_checksum_repair(
++            5,
++            &[0x42; 48],
++            embedded
++        ));
++        assert!(!is_approved_startos_checksum_repair(
++            5,
++            &legacy,
++            &[0x24; 48]
++        ));
++        assert_eq!(
++            hex::encode(embedded),
++            STARTOS_DESKTOP_0_5_20_MIGRATION_5_CHECKSUM_HEX
++        );
++    }
++
+     use std::{
+         collections::BTreeSet,
+         fs,
+diff --git a/crates/buzz-db/src/store/admin_moderation.rs b/crates/buzz-db/src/store/admin_moderation.rs
+index 1c7de25cc0fc50ddae66652465437cdec7d9c37a..7ff6eabdfd753305357d87fd414fd5032dda8139 100644
+--- a/crates/buzz-db/src/store/admin_moderation.rs
++++ b/crates/buzz-db/src/store/admin_moderation.rs
+@@ -31,6 +31,13 @@ fn admin_hidden_kinds() -> Vec<i32> {
+         .collect()
+ }
+ 
++/// `k` values that make a NIP-09 deletion as private as the author-only event
++/// it deletes (see `buzz_core::kind::is_author_only_event_kind`). Admin reads
++/// hide such deletions with `NOT (kind = 5 AND tags name one of these)`.
++fn private_deletion_k_values() -> Vec<String> {
++    AUTHOR_ONLY_KINDS.iter().map(u32::to_string).collect()
++}
++
+ fn bounded_limit(limit: i64) -> i64 {
+     limit.clamp(1, MAX_PAGE_SIZE)
+ }
+@@ -225,6 +232,9 @@ pub async fn list_reports(
+               AND e.community_id = r.community_id
+               AND e.id = r.target_event_id
+               AND e.kind <> ALL($10)
++              AND NOT (e.kind = 5 AND EXISTS (
++                  SELECT 1 FROM jsonb_array_elements(e.tags) t
++                  WHERE t->>0 = 'k' AND t->>1 = ANY($11::text[])))
+             ORDER BY e.created_at DESC
+             LIMIT 1
+         ) target ON TRUE
+@@ -249,17 +259,20 @@ pub async fn list_reports(
+     .bind(cursor_id)
+     .bind(bounded_limit(limit))
+     .bind(admin_hidden_kinds())
++    .bind(private_deletion_k_values())
+     .fetch_all(pool)
+     .await?;
+     rows.into_iter().map(row_to_report).collect()
+ }
+ 
+ /// Fetch one report globally by its row id, including its event target content.
+-/// Targets whose kind is in `hidden_kinds` come back as `message: None`.
++/// Targets whose kind is in `hidden_kinds`, and deletions whose `k` tag names
++/// one of `private_deletion_ks`, come back as `message: None`.
+ async fn get_report(
+     pool: &PgPool,
+     report_id: Uuid,
+     hidden_kinds: &[i32],
++    private_deletion_ks: &[String],
+ ) -> Result<Option<AdminReportDetail>> {
+     let row = sqlx::query(
+         r#"
+@@ -294,6 +307,9 @@ async fn get_report(
+               AND e.community_id = r.community_id
+               AND e.id = r.target_event_id
+               AND e.kind <> ALL($2)
++              AND NOT (e.kind = 5 AND EXISTS (
++                  SELECT 1 FROM jsonb_array_elements(e.tags) t
++                  WHERE t->>0 = 'k' AND t->>1 = ANY($3::text[])))
+             ORDER BY e.created_at DESC
+             LIMIT 1
+         ) target ON TRUE
+@@ -314,6 +330,7 @@ async fn get_report(
+     )
+     .bind(report_id)
+     .bind(hidden_kinds)
++    .bind(private_deletion_ks)
+     .fetch_optional(pool)
+     .await?;
+     row.map(|row| {
+@@ -535,6 +552,9 @@ pub async fn get_event_preview(
+         SELECT id, pubkey, kind, content, created_at, deleted_at, channel_id
+         FROM events
+         WHERE community_id = $1 AND id = $2 AND kind <> ALL($3)
++          AND NOT (kind = 5 AND EXISTS (
++              SELECT 1 FROM jsonb_array_elements(tags) t
++              WHERE t->>0 = 'k' AND t->>1 = ANY($4::text[])))
+         ORDER BY created_at DESC
+         LIMIT 1
+         "#,
+@@ -542,6 +562,7 @@ pub async fn get_event_preview(
+     .bind(community_id)
+     .bind(id)
+     .bind(admin_hidden_kinds())
++    .bind(private_deletion_k_values())
+     .fetch_optional(pool)
+     .await?;
+     row.map(|row| {
+@@ -591,7 +612,13 @@ impl Db {
+     /// back as `message: None`, exactly like a missing event.
+     #[datastore_span(name = "admin_get_report", system = "postgresql")]
+     pub async fn admin_get_report(&self, id: Uuid) -> Result<Option<AdminReportDetail>> {
+-        get_report(&self.pool, id, &admin_hidden_kinds()).await
++        get_report(
++            &self.pool,
++            id,
++            &admin_hidden_kinds(),
++            &private_deletion_k_values(),
++        )
++        .await
+     }
+ 
+     /// Fetch one report with its target unfiltered, for report enforcement and
+@@ -602,7 +629,7 @@ impl Db {
+         &self,
+         id: Uuid,
+     ) -> Result<Option<AdminReportDetail>> {
+-        get_report(&self.pool, id, &[]).await
++        get_report(&self.pool, id, &[], &[]).await
+     }
+ 
+     /// List feedback for the deployment-global read-only admin plane.
+@@ -787,10 +814,15 @@ mod postgres_tests {
+         .await;
+         let report_id = insert_event_report(&pool, report_community, &event_id).await;
+ 
+-        let detail = get_report(&pool, report_id, &admin_hidden_kinds())
+-            .await
+-            .expect("query report")
+-            .expect("report exists");
++        let detail = get_report(
++            &pool,
++            report_id,
++            &admin_hidden_kinds(),
++            &private_deletion_k_values(),
++        )
++        .await
++        .expect("query report")
++        .expect("report exists");
+         let message = detail.message.expect("reported message exists");
+         assert_eq!(message.content, "reported message");
+         assert_eq!(message.author_pubkey, hex::encode([5_u8; 32]));
+@@ -912,6 +944,52 @@ mod postgres_tests {
+                 insert_event_report(&pool, community_id, &event_id).await,
+             ));
+         }
++        // Deletions of author-only events are private by their `k` tag alone,
++        // live or soft-deleted; a deletion with a public or non-canonical `k`
++        // stays readable, matching `buzz_core::kind::k_tag_kinds`.
++        // An unrelated tag that merely contains `"k"` and an author-only kind
++        // is not a marker: matching is positional, as in Rust.
++        let mut public_deletions = Vec::new();
++        let cases = AUTHOR_ONLY_KINDS
++            .iter()
++            .map(|k| (format!(r#"[["k","{k}"]]"#), true))
++            .chain(
++                [
++                    r#"[["k","1"]]"#,
++                    r#"[["k","030300"]]"#,
++                    r#"[["k","+30300"]]"#,
++                    r#"[["k","1"],["meta","k","30300"]]"#,
++                ]
++                .map(|tags| (tags.to_string(), false)),
++            );
++        for (i, (tags, private)) in cases.enumerate() {
++            let event_id = vec![0x60 + i as u8; 32];
++            sqlx::query(
++                r#"
++                INSERT INTO events (community_id, id, pubkey, created_at, kind, tags, content, sig, deleted_at)
++                VALUES ($1, $2, $3, now(), 5, $4::jsonb, '', $5, CASE WHEN $6 THEN now() END)
++                "#,
++            )
++            .bind(community_id)
++            .bind(&event_id)
++            .bind(author)
++            .bind(&tags)
++            .bind(vec![3_u8; 64])
++            .bind(i % 2 == 1)
++            .execute(&pool)
++            .await
++            .expect("insert deletion event");
++            let report = insert_event_report(&pool, community_id, &event_id).await;
++            let preview = get_event_preview(&pool, community_id, &event_id)
++                .await
++                .expect("preview");
++            assert_eq!(preview.is_none(), private, "preview, deletion tags {tags}");
++            if private {
++                hidden.push((5, report));
++            } else {
++                public_deletions.push((tags, report));
++            }
++        }
+         let visible_id = vec![0x3f_u8; 32];
+         insert_event(&pool, community_id, &visible_id, &author, "public", None).await;
+         let visible = insert_event_report(&pool, community_id, &visible_id).await;
+@@ -939,17 +1017,44 @@ mod postgres_tests {
+         };
+         for &(kind, report_id) in &hidden {
+             assert_eq!(author_of(report_id), None, "list, kind {kind}");
+-            let detail = get_report(&pool, report_id, &admin_hidden_kinds())
+-                .await
+-                .expect("query report")
+-                .expect("report exists");
++            let detail = get_report(
++                &pool,
++                report_id,
++                &admin_hidden_kinds(),
++                &private_deletion_k_values(),
++            )
++            .await
++            .expect("query report")
++            .expect("report exists");
+             assert!(detail.message.is_none(), "detail, kind {kind}");
+         }
+         assert_eq!(author_of(visible), Some(hex::encode(author)));
+-        let detail = get_report(&pool, visible, &admin_hidden_kinds())
++        for (tags, report_id) in public_deletions {
++            assert_eq!(
++                author_of(report_id),
++                Some(hex::encode(author)),
++                "list, deletion tags {tags}"
++            );
++            let detail = get_report(
++                &pool,
++                report_id,
++                &admin_hidden_kinds(),
++                &private_deletion_k_values(),
++            )
+             .await
+             .expect("query report")
+             .expect("report exists");
++            assert!(detail.message.is_some(), "detail, deletion tags {tags}");
++        }
++        let detail = get_report(
++            &pool,
++            visible,
++            &admin_hidden_kinds(),
++            &private_deletion_k_values(),
++        )
++        .await
++        .expect("query report")
++        .expect("report exists");
+         assert_eq!(detail.message.expect("message shown").content, "public");
+ 
+         sqlx::query("DELETE FROM events WHERE community_id = $1")
+@@ -967,10 +1072,15 @@ mod postgres_tests {
+         let community_id = insert_community(&pool, "pubkey-target").await;
+         let report_id = insert_pubkey_report(&pool, community_id).await;
+ 
+-        let detail = get_report(&pool, report_id, &admin_hidden_kinds())
+-            .await
+-            .expect("query report")
+-            .expect("report exists");
++        let detail = get_report(
++            &pool,
++            report_id,
++            &admin_hidden_kinds(),
++            &private_deletion_k_values(),
++        )
++        .await
++        .expect("query report")
++        .expect("report exists");
+         assert_eq!(detail.report.target_kind, "pubkey");
+         assert!(detail.message.is_none());
+ 
+@@ -985,10 +1095,15 @@ mod postgres_tests {
+         let missing_event_id = vec![8_u8; 32];
+         let report_id = insert_event_report(&pool, community_id, &missing_event_id).await;
+ 
+-        let detail = get_report(&pool, report_id, &admin_hidden_kinds())
+-            .await
+-            .expect("query report")
+-            .expect("report exists");
++        let detail = get_report(
++            &pool,
++            report_id,
++            &admin_hidden_kinds(),
++            &private_deletion_k_values(),
++        )
++        .await
++        .expect("query report")
++        .expect("report exists");
+         assert_eq!(detail.report.target_kind, "event");
+         assert_eq!(detail.report.target, hex::encode(missing_event_id));
+         assert!(detail.message.is_none());
+@@ -1052,10 +1167,15 @@ mod postgres_tests {
+         .await;
+         set_report_status(&pool, community_id, report_id, "dismissed").await;
+ 
+-        let detail = get_report(&pool, report_id, &admin_hidden_kinds())
+-            .await
+-            .expect("query report")
+-            .expect("report exists");
++        let detail = get_report(
++            &pool,
++            report_id,
++            &admin_hidden_kinds(),
++            &private_deletion_k_values(),
++        )
++        .await
++        .expect("query report")
++        .expect("report exists");
+         assert_eq!(detail.report.status, "dismissed");
+         let action = detail
+             .active_action
+@@ -1092,10 +1212,15 @@ mod postgres_tests {
+         .await;
+         set_report_status(&pool, community_id, report_id, "resolved").await;
+ 
+-        let detail = get_report(&pool, report_id, &admin_hidden_kinds())
+-            .await
+-            .expect("query report")
+-            .expect("report exists");
++        let detail = get_report(
++            &pool,
++            report_id,
++            &admin_hidden_kinds(),
++            &private_deletion_k_values(),
++        )
++        .await
++        .expect("query report")
++        .expect("report exists");
+         let action = detail.active_action.expect("an action surfaces");
+         assert_eq!(
+             action.id,
+@@ -1126,10 +1251,15 @@ mod postgres_tests {
+         )
+         .await;
+ 
+-        let detail = get_report(&pool, report_id, &admin_hidden_kinds())
+-            .await
+-            .expect("query report")
+-            .expect("report exists");
++        let detail = get_report(
++            &pool,
++            report_id,
++            &admin_hidden_kinds(),
++            &private_deletion_k_values(),
++        )
++        .await
++        .expect("query report")
++        .expect("report exists");
+         assert!(
+             detail.active_action.is_none(),
+             "reopen audit row must not surface as an enforcement action"
+diff --git a/crates/buzz-db/src/store/artifact.rs b/crates/buzz-db/src/store/artifact.rs
+index 988fb861358f25090de01f2155bf9613a0a00ed5..a8a49ac602be7a5adf4a452f69aa67eb84614990 100644
+--- a/crates/buzz-db/src/store/artifact.rs
++++ b/crates/buzz-db/src/store/artifact.rs
+@@ -25,6 +25,10 @@ pub enum ArtifactOutcome {
+     Rejected(&'static str),
+ }
+ 
++/// Conflict for a non-create revision whose artifact is missing or lives
++/// outside every channel the sender was authorized for.
++pub const HEAD_UNAVAILABLE: &str = "artifact head unavailable";
++
+ fn invalid(message: &str) -> DbError {
+     DbError::InvalidData(message.into())
+ }
+@@ -133,7 +137,19 @@ impl Db {
+                 return Ok(ArtifactOutcome::Conflict("artifact identity is taken"))
+             }
+             (None, ArtifactOp::Create) => {}
+-            (None, _) => return Ok(ArtifactOutcome::Conflict("artifact head unavailable")),
++            (None, _) => return Ok(ArtifactOutcome::Conflict(HEAD_UNAVAILABLE)),
++            // The caller authorized writes only in `h`, or for a move in the
++            // source it read before this transaction. A head anywhere else
++            // answers like a missing one, before any check that describes it.
++            (Some(_), op)
++                if source
++                    != match op {
++                        ArtifactOp::Move => authorized_source,
++                        _ => Some(env.home),
++                    } =>
++            {
++                return Ok(ArtifactOutcome::Conflict(HEAD_UNAVAILABLE))
++            }
+             (Some(head), op) => {
+                 let current: Vec<u8> = head.get("event_id");
+                 if env.prev.as_deref() != Some(current.as_slice()) {
+@@ -152,9 +168,6 @@ impl Db {
+                         "only move changes home and move must change home",
+                     ));
+                 }
+-                if op == ArtifactOp::Move && authorized_source != source {
+-                    return Ok(ArtifactOutcome::Conflict("artifact home changed"));
+-                }
+                 if op == ArtifactOp::Delete && env.root != old_root {
+                     return Ok(ArtifactOutcome::Rejected("delete preserves root"));
+                 }
+diff --git a/crates/buzz-db/src/store/artifact_postgres_tests.rs b/crates/buzz-db/src/store/artifact_postgres_tests.rs
+index 4ac03a06f4b0d4ec04d62012cbb9871d56f08824..f1b0af4362f782e428e0db3d54876731c6d81a92 100644
+--- a/crates/buzz-db/src/store/artifact_postgres_tests.rs
++++ b/crates/buzz-db/src/store/artifact_postgres_tests.rs
+@@ -436,3 +436,104 @@ async fn quiescing_community_rejects_artifact_at_admission_before_coordinate_loc
+         "a rejected artifact must persist nothing"
+     );
+ }
++
++/// A non-create revision whose head lives outside the channel the caller
++/// authorized answers exactly like a missing artifact, before the revision,
++/// type, deleted and root checks could describe the head.
++#[tokio::test]
++#[ignore = "requires Postgres"]
++async fn head_outside_authorized_channel_matches_missing_head() {
++    let f = Fixture::new().await;
++    let d = Uuid::new_v4();
++    let create = f.revision(d, "create", f.a, None, &f.owner, vec![]);
++    assert!(matches!(
++        f.accept(&create, None).await,
++        ArtifactOutcome::Accepted(_)
++    ));
++    let gone = Uuid::new_v4();
++    let deleted_d = Uuid::new_v4();
++    let deleted_create = f.revision(deleted_d, "create", f.a, None, &f.owner, vec![]);
++    assert!(matches!(
++        f.accept(&deleted_create, None).await,
++        ArtifactOutcome::Accepted(_)
++    ));
++    let deleted = f.revision(
++        deleted_d,
++        "delete",
++        f.a,
++        Some(&deleted_create),
++        &f.owner,
++        vec![],
++    );
++    assert!(matches!(
++        f.accept(&deleted, None).await,
++        ArtifactOutcome::Accepted(_)
++    ));
++    let retyped = {
++        let mut tags: Vec<Vec<String>> = vec![
++            vec!["ar".into(), "1".into()],
++            vec!["d".into(), d.to_string()],
++            vec!["h".into(), f.b.to_string()],
++            vec!["type".into(), "buzz.note".into()],
++            vec!["op".into(), "update".into()],
++            vec!["title".into(), "Test".into()],
++        ];
++        tags.push(vec!["prev".into(), create.id.to_hex()]);
++        EventBuilder::new(Kind::Custom(45010), "secret")
++            .tags(tags.into_iter().map(|t| Tag::parse(t).unwrap()))
++            .sign_with_keys(&f.peer)
++            .unwrap()
++    };
++    let cases = [
++        (
++            "missing",
++            f.revision(gone, "update", f.b, Some(&create), &f.peer, vec![]),
++            None,
++        ),
++        (
++            "current prev",
++            f.revision(d, "update", f.b, Some(&create), &f.peer, vec![]),
++            None,
++        ),
++        (
++            "stale prev",
++            f.revision(d, "update", f.b, Some(&deleted), &f.peer, vec![]),
++            None,
++        ),
++        ("other type", retyped, None),
++        (
++            "delete",
++            f.revision(d, "delete", f.b, Some(&create), &f.peer, vec![]),
++            None,
++        ),
++        (
++            "restore deleted",
++            f.revision(deleted_d, "restore", f.b, Some(&deleted), &f.peer, vec![]),
++            None,
++        ),
++        (
++            "update deleted",
++            f.revision(deleted_d, "update", f.b, Some(&deleted), &f.peer, vec![]),
++            None,
++        ),
++        (
++            "move from unauthorized source",
++            f.revision(d, "move", f.b, Some(&create), &f.peer, vec![]),
++            Some(f.b),
++        ),
++    ];
++    for (case, event, source) in cases {
++        match f.accept(&event, source).await {
++            ArtifactOutcome::Conflict(reason) => {
++                assert_eq!(reason, super::artifact::HEAD_UNAVAILABLE, "{case}")
++            }
++            other => panic!("{case}: {other:?}"),
++        }
++    }
++    // Positive control: the same revision homed where the head lives.
++    let update = f.revision(d, "update", f.a, Some(&create), &f.peer, vec![]);
++    assert!(matches!(
++        f.accept(&update, None).await,
++        ArtifactOutcome::Accepted(_)
++    ));
++}
+diff --git a/crates/buzz-relay/src/api/admin/mod.rs b/crates/buzz-relay/src/api/admin/mod.rs
+index 20935e9fed5170d9fb5d8c84c8f3004ea229208e..b5cfa1ef49044c991b49d8879e0394cd36859992 100644
+--- a/crates/buzz-relay/src/api/admin/mod.rs
++++ b/crates/buzz-relay/src/api/admin/mod.rs
+@@ -7308,9 +7308,30 @@ mod postgres_tests {
+         assert!(banned, "the stored author must be banned");
+     }
+ 
+-    /// Seed an event report in the `admin.example` community whose target is a
+-    /// hidden (shared-gated) kind authored by `author`. Returns the report id.
+-    async fn seed_hidden_kind_event_report(pool: &sqlx::PgPool, author: &[u8]) -> Uuid {
++    /// Targets admin reads must hide but enforcement must still reach: a
++    /// hidden (shared-gated) kind, and a deletion of an author-only event,
++    /// which is private by its `k` tag alone.
++    fn hidden_targets() -> [(i32, serde_json::Value); 2] {
++        [
++            (
++                buzz_core::kind::SHARED_GATED_KINDS[0] as i32,
++                serde_json::json!([["shared", "true"]]),
++            ),
++            (
++                buzz_core::kind::KIND_DELETION as i32,
++                serde_json::json!([["k", buzz_core::kind::KIND_EVENT_REMINDER.to_string()]]),
++            ),
++        ]
++    }
++
++    /// Seed an event report in the `admin.example` community whose target is
++    /// authored by `author` and stored with `kind` and `tags`. Returns the
++    /// report id.
++    async fn seed_hidden_kind_event_report(
++        pool: &sqlx::PgPool,
++        author: &[u8],
++        (kind, tags): &(i32, serde_json::Value),
++    ) -> Uuid {
+         let host_report = seed_admin_host_report(pool, "open").await;
+         let community_id: Uuid =
+             sqlx::query_scalar("SELECT community_id FROM moderation_reports WHERE id = $1")
+@@ -7321,16 +7342,14 @@ mod postgres_tests {
+         cleanup_admin_host_report(pool, host_report).await;
+         let (report_id, _channel_id, target_event_id) =
+             e2e_event_report_with_author(pool, community_id, author).await;
+-        sqlx::query(
+-            r#"UPDATE events SET kind = $3, tags = '[["shared","true"]]'::jsonb
+-               WHERE community_id = $1 AND id = $2"#,
+-        )
+-        .bind(community_id)
+-        .bind(target_event_id.as_slice())
+-        .bind(buzz_core::kind::SHARED_GATED_KINDS[0] as i32)
+-        .execute(pool)
+-        .await
+-        .expect("make target a hidden kind");
++        sqlx::query("UPDATE events SET kind = $3, tags = $4 WHERE community_id = $1 AND id = $2")
++            .bind(community_id)
++            .bind(target_event_id.as_slice())
++            .bind(kind)
++            .bind(tags)
++            .execute(pool)
++            .await
++            .expect("make target a hidden kind");
+         report_id
+     }
+ 
+@@ -7339,11 +7358,17 @@ mod postgres_tests {
+     #[tokio::test]
+     #[ignore = "requires Postgres — resolve ban on a hidden-kind target bans the author, detail stays hidden"]
+     async fn resolve_ban_on_hidden_kind_target_bans_author_without_revealing_it() {
++        for target in hidden_targets() {
++            resolve_ban_on_hidden_target(&target).await;
++        }
++    }
++
++    async fn resolve_ban_on_hidden_target(target: &(i32, serde_json::Value)) {
+         let keys = nostr::Keys::generate();
+         let state = nip98_state(vec![keys.public_key().to_hex()]).await;
+         let pool = e2e_pool().await;
+         let author = nostr::Keys::generate().public_key().to_bytes().to_vec();
+-        let report_id = seed_hidden_kind_event_report(&pool, &author).await;
++        let report_id = seed_hidden_kind_event_report(&pool, &author, target).await;
+ 
+         let path = format!("/reports/{report_id}/resolve");
+         let body = serde_json::json!({ "action": "ban", "requestId": Uuid::new_v4() }).to_string();
+@@ -7424,9 +7449,15 @@ mod postgres_tests {
+     #[tokio::test]
+     #[ignore = "requires Postgres — stranded ban on a hidden-kind target recovers"]
+     async fn stranded_ban_on_hidden_kind_target_recovers_via_worker() {
++        for target in hidden_targets() {
++            stranded_ban_on_hidden_target_recovers(&target).await;
++        }
++    }
++
++    async fn stranded_ban_on_hidden_target_recovers(target: &(i32, serde_json::Value)) {
+         let pool = e2e_pool().await;
+         let author = nostr::Keys::generate().public_key().to_bytes().to_vec();
+-        let report_id = seed_hidden_kind_event_report(&pool, &author).await;
++        let report_id = seed_hidden_kind_event_report(&pool, &author, target).await;
+         let (community_id, channel_id): (Uuid, Option<Uuid>) =
+             sqlx::query_as("SELECT community_id, channel_id FROM moderation_reports WHERE id = $1")
+                 .bind(report_id)
+diff --git a/crates/buzz-relay/src/api/artifact_postgres_tests.rs b/crates/buzz-relay/src/api/artifact_postgres_tests.rs
+index e60010cc8ac651950c5668cb4500d9dfd8b3de56..b962d3f1c7b2b438207f5eac801c419eab6b184c 100644
+--- a/crates/buzz-relay/src/api/artifact_postgres_tests.rs
++++ b/crates/buzz-relay/src/api/artifact_postgres_tests.rs
+@@ -311,21 +311,36 @@ async fn writes_use_channel_gates_for_home_and_move_source() {
+         .as_array()
+         .unwrap()
+         .contains(&json!(["prev", peer_edit.id.to_hex()])));
++    // An unwritable source answers exactly like a move of a missing artifact.
++    let missing_move =
++        |key: &Keys| f.revision_as(key, f.home, Uuid::new_v4(), "move", Some(&moved));
++    let (status, body) = f.try_publish(&missing_move(&f.peer)).await;
++    let peer_missing = (status, without_event_id(body));
++    assert!(!peer_missing.0.is_success(), "{peer_missing:?}");
+     // The peer can write the destination but not the private source.
+     let back = f.revision_as(&f.peer, f.home, d, "move", Some(&moved));
+     let (status, body) = f.try_publish(&back).await;
+-    assert!(!status.is_success() || body["accepted"] == false, "{body}");
+-    assert!(body.to_string().contains("not a channel member"), "{body}");
++    assert_eq!((status, without_event_id(body)), peer_missing);
+     sqlx::query("UPDATE channels SET archived_at=now() WHERE community_id=$1 AND id=$2")
+         .bind(f.community.as_uuid())
+         .bind(f.private)
+         .execute(&f.pool)
+         .await
+         .unwrap();
++    let (status, body) = f.try_publish(&missing_move(&f.owner)).await;
++    let owner_missing = (status, without_event_id(body));
++    assert!(!owner_missing.0.is_success(), "{owner_missing:?}");
+     let archived_source = f.revision_as(&f.owner, f.home, d, "move", Some(&moved));
+     let (status, body) = f.try_publish(&archived_source).await;
+-    assert!(!status.is_success() || body["accepted"] == false, "{body}");
+-    assert!(body.to_string().contains("archived"), "{body}");
++    assert_eq!((status, without_event_id(body)), owner_missing);
++}
++
++/// Drop the per-event id so rejections of different events compare exactly.
++fn without_event_id(mut body: Value) -> Value {
++    if let Some(object) = body.as_object_mut() {
++        object.remove("event_id");
++    }
++    body
+ }
+ 
+ /// Re-sign an artifact revision with extra tags and an explicit timestamp.
+diff --git a/crates/buzz-relay/src/api/bridge.rs b/crates/buzz-relay/src/api/bridge.rs
+index 5cb515a5b23ff282970af7d0ef239f8c8591a688..0eb352db7cc6a4afc971c0a9ad961e698b335bd8 100644
+--- a/crates/buzz-relay/src/api/bridge.rs
++++ b/crates/buzz-relay/src/api/bridge.rs
+@@ -686,6 +686,7 @@ async fn handle_channel_window_filter(
+     raw: &Value,
+     filter: &nostr::Filter,
+     accessible_channels: &[uuid::Uuid],
++    reader_pubkey_bytes: &[u8],
+     events: &mut Vec<Value>,
+ ) -> Result<(), (StatusCode, Json<Value>)> {
+     use buzz_core::kind::{KIND_THREAD_SUMMARY, KIND_WINDOW_BOUNDS};
+@@ -790,7 +791,12 @@ async fn handle_channel_window_filter(
+                 }
+                 // Deletions can be stored channel-less; access-check instead
+                 // of channel-constraining so they aren't silently dropped.
+-                if !event_in_accessible_channel(&se, accessible_channels) {
++                if !event_in_accessible_channel(&se, accessible_channels)
++                    || !crate::handlers::req::event_visible_to_reader(
++                        &se.event,
++                        reader_pubkey_bytes,
++                    )
++                {
+                     continue;
+                 }
+                 hop_ids.push(se.event.id.to_hex());
+@@ -1472,6 +1478,7 @@ async fn query_events_authed(
+             raw,
+             filter,
+             &accessible_channels,
++            &pubkey_bytes,
+             &mut events,
+         )
+         .await?;
+@@ -2413,17 +2420,10 @@ pub async fn workflow_webhook(
+         .await
+         .map_err(|_| not_found("workflow not found"))?;
+ 
+-    let def: buzz_workflow::WorkflowDef = serde_json::from_value(workflow.definition.clone())
+-        .map_err(|e| super::internal_error(&format!("corrupt workflow definition: {e}")))?;
+-
+-    if !matches!(def.trigger, buzz_workflow::TriggerDef::Webhook) {
+-        return Err(api_error(
+-            StatusCode::BAD_REQUEST,
+-            "workflow does not have a webhook trigger",
+-        ));
+-    }
+-
+     // Verify webhook secret. Prefer header (not logged by proxies); fall back to query param.
++    // Until the caller proves the secret, every failure answers like a missing
++    // workflow, so the response never reveals that the workflow exists, its
++    // trigger type, or whether a secret was configured.
+     let stored_secret = crate::webhook_secret::extract_secret(&workflow.definition);
+     let provided_secret = headers
+         .get("x-webhook-secret")
+@@ -2431,20 +2431,21 @@ pub async fn workflow_webhook(
+         .map(|s| s.to_string())
+         .or_else(|| query.secret.clone())
+         .unwrap_or_default();
++    if !stored_secret
++        .is_some_and(|secret| crate::webhook_secret::verify_secret(&provided_secret, &secret))
++    {
++        tracing::warn!("webhook: missing or invalid secret for workflow {id}");
++        return Err(not_found("workflow not found"));
++    }
+ 
+-    match &stored_secret {
+-        Some(secret) => {
+-            if !crate::webhook_secret::verify_secret(&provided_secret, secret) {
+-                tracing::warn!("webhook: invalid secret for workflow {id}");
+-                return Err(api_error(StatusCode::UNAUTHORIZED, "authentication failed"));
+-            }
+-        }
+-        None => {
+-            return Err(api_error(
+-                StatusCode::UNAUTHORIZED,
+-                "webhook secret required but not configured — re-save the workflow to generate one",
+-            ));
+-        }
++    let def: buzz_workflow::WorkflowDef = serde_json::from_value(workflow.definition.clone())
++        .map_err(|e| super::internal_error(&format!("corrupt workflow definition: {e}")))?;
++
++    if !matches!(def.trigger, buzz_workflow::TriggerDef::Webhook) {
++        return Err(api_error(
++            StatusCode::BAD_REQUEST,
++            "workflow does not have a webhook trigger",
++        ));
+     }
+ 
+     // Parse optional JSON body as trigger context.
+@@ -4401,6 +4402,73 @@ pub(crate) mod postgres_tests {
+         (status, String::from_utf8_lossy(&bytes).into_owned())
+     }
+ 
++    /// A workflow row without a channel has no readers, so even its owner
++    /// reads its runs exactly like a workflow that does not exist. Ingest
++    /// refuses channelless definitions, so the row is seeded directly.
++    /// Mutation: let a `None` channel through `authorize_workflow_read` → RED.
++    #[tokio::test]
++    #[ignore = "requires Postgres"]
++    async fn channelless_workflow_runs_read_as_missing() {
++        use axum::body::Body;
++        use axum::http::{header, Request};
++        use tower::ServiceExt;
++
++        let state = bridge_handler_test_state()
++            .await
++            .expect("local Postgres not reachable");
++        let host = format!("channelless-{}.local", uuid::Uuid::new_v4().simple());
++        let community = state
++            .db
++            .ensure_configured_community(&host)
++            .await
++            .expect("ensure community")
++            .id;
++        let owner = Keys::generate();
++        state
++            .db
++            .ensure_user(community, owner.public_key().as_bytes())
++            .await
++            .expect("ensure user");
++        let workflow = state
++            .db
++            .create_workflow(
++                community,
++                None,
++                owner.public_key().as_bytes(),
++                "channelless",
++                "{}",
++                &[0u8; 32],
++            )
++            .await
++            .expect("seed workflow");
++        let read = |id: uuid::Uuid| {
++            let state = state.clone();
++            let host = host.clone();
++            let owner = owner.public_key().to_hex();
++            async move {
++                let resp = crate::router::build_router(state)
++                    .oneshot(
++                        Request::builder()
++                            .uri(format!("/workflows/{id}/runs"))
++                            .header(header::HOST, host)
++                            .header("x-pubkey", owner)
++                            .body(Body::empty())
++                            .expect("request"),
++                    )
++                    .await
++                    .expect("oneshot");
++                let status = resp.status();
++                let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
++                    .await
++                    .expect("body");
++                (status, body)
++            }
++        };
++        let missing = read(uuid::Uuid::new_v4()).await;
++        assert_eq!(missing.0, axum::http::StatusCode::NOT_FOUND, "{missing:?}");
++        assert_eq!(read(workflow).await, missing);
++    }
++
+     /// Collect buzz_events_rejected_total with (transport, reason) labels from
+     /// a DebuggingRecorder snapshot.
+     fn http_reject_counts(
+diff --git a/crates/buzz-relay/src/api/bridge/thread_window/postgres_tests.rs b/crates/buzz-relay/src/api/bridge/thread_window/postgres_tests.rs
+index 9cee67ea3bd5cb857c15cf3e921dd6509f20786c..02ef106cdae310c30e7df67854fc774c840055f8 100644
+--- a/crates/buzz-relay/src/api/bridge/thread_window/postgres_tests.rs
++++ b/crates/buzz-relay/src/api/bridge/thread_window/postgres_tests.rs
+@@ -532,3 +532,64 @@ async fn thread_window_router_aux_row_cap_and_corrupt_page() {
+ mod failure_postgres_tests;
+ 
+ mod review_postgres_tests;
++
++/// A deletion of an author-only event is private by its `k` tag alone. Neither
++/// window's aux closure returns one to anyone but its signer, and a read by id
++/// stays author-only after its target is physically gone. Ordinary ingest can
++/// build neither case, so both use stored fixtures.
++#[tokio::test]
++#[ignore = "requires Postgres"]
++async fn private_deletions_reach_only_their_signer_through_windows_and_id_reads() {
++    let f = Fixture::new().await;
++    let reply = f.reply(0).await;
++    let reply_reaction = f.aux(7, &reply, Some(f.channel)).await;
++    let root_reaction = f.aux(7, &f.root, Some(f.channel)).await;
++    let signer = Keys::generate();
++    let deletion = |target: &str, k: &str| {
++        EventBuilder::new(Kind::EventDeletion, "")
++            .tags([
++                Tag::parse(["e", target]).unwrap(),
++                Tag::parse(["k", k]).unwrap(),
++            ])
++            .custom_created_at(Timestamp::from(f.root.created_at.as_secs() + 120))
++            .sign_with_keys(&signer)
++            .unwrap()
++    };
++    let reminder = buzz_core::kind::KIND_EVENT_REMINDER.to_string();
++    let thread_private = deletion(&reply_reaction.id.to_hex(), &reminder);
++    let thread_public = deletion(&reply_reaction.id.to_hex(), "7");
++    let channel_private = deletion(&root_reaction.id.to_hex(), &reminder);
++    let channel_public = deletion(&root_reaction.id.to_hex(), "7");
++    let orphan_private = deletion(&"ab".repeat(32), &reminder);
++    for event in [
++        &thread_private,
++        &thread_public,
++        &channel_private,
++        &channel_public,
++        &orphan_private,
++    ] {
++        f.state
++            .db
++            .insert_event(f.community, event, None)
++            .await
++            .unwrap();
++    }
++
++    let thread = f.query(&f.filter()).await;
++    let thread = ids(&thread, Some(5));
++    assert!(thread.contains(&thread_public.id.to_hex().as_str()));
++    assert!(!thread.contains(&thread_private.id.to_hex().as_str()));
++
++    let window = json!({"top_level":true,"#h":[f.channel],"kinds":[9],"include_aux":true});
++    let window = f.query(&window).await;
++    let window = ids(&window, Some(5));
++    assert!(window.contains(&channel_public.id.to_hex().as_str()));
++    assert!(!window.contains(&channel_private.id.to_hex().as_str()));
++
++    let by_id = json!([{"ids":[orphan_private.id.to_hex()]}]);
++    for (reader, visible) in [(&f.keys, false), (&signer, true)] {
++        let (status, body) = f.post(reader, "/query", by_id.clone()).await;
++        assert_eq!(status, StatusCode::OK, "{body}");
++        assert_eq!(ids(&body, Some(5)).len(), usize::from(visible), "{body}");
++    }
++}
+diff --git a/crates/buzz-relay/src/api/workflows.rs b/crates/buzz-relay/src/api/workflows.rs
+index d957965bca758f4358aba79d507e56fd06e79e55..b6a1f98e001e45b7b83498f3d6d9b36758160158 100644
+--- a/crates/buzz-relay/src/api/workflows.rs
++++ b/crates/buzz-relay/src/api/workflows.rs
+@@ -102,19 +102,19 @@ async fn authorize_workflow_read(
+     .await
+     .map_err(|e| e.into_response())?;
+ 
+-    let workflow = state
+-        .db
+-        .get_workflow(tenant.community(), workflow_id)
+-        .await
+-        .map_err(|error| match error {
+-            buzz_db::error::DbError::NotFound(_) => {
+-                api_error(StatusCode::NOT_FOUND, "workflow not found").into_response()
+-            }
+-            other => internal_error(&format!("get workflow for run read: {other}")).into_response(),
+-        })?;
+-    let channel_id = workflow.channel_id.ok_or_else(|| {
+-        api_error(StatusCode::FORBIDDEN, "workflow is not channel-scoped").into_response()
+-    })?;
++    // A workflow the caller cannot read answers exactly like a missing one, so
++    // the response never reveals which workflow IDs exist.
++    let not_found = || api_error(StatusCode::NOT_FOUND, "workflow not found").into_response();
++    let workflow = match state.db.get_workflow(tenant.community(), workflow_id).await {
++        Ok(workflow) => workflow,
++        Err(buzz_db::error::DbError::NotFound(_)) => return Err(not_found()),
++        Err(other) => {
++            return Err(
++                internal_error(&format!("get workflow for run read: {other}")).into_response(),
++            )
++        }
++    };
++    let channel_id = workflow.channel_id.ok_or_else(not_found)?;
+     let accessible = state
+         .get_accessible_channel_ids_cached(tenant.community(), &pubkey_bytes)
+         .await
+@@ -122,7 +122,7 @@ async fn authorize_workflow_read(
+             internal_error(&format!("workflow channel access lookup: {error}")).into_response()
+         })?;
+     if !accessible.contains(&channel_id) {
+-        return Err(api_error(StatusCode::FORBIDDEN, "workflow is not accessible").into_response());
++        return Err(not_found());
+     }
+ 
+     Ok(tenant)
+diff --git a/crates/buzz-relay/src/handlers/artifact.rs b/crates/buzz-relay/src/handlers/artifact.rs
+index 3e186f93382d9abcc780af2b945199ae1fd52e73..772e032e75f1a9f690248951e205bf4057dd1640 100644
+--- a/crates/buzz-relay/src/handlers/artifact.rs
++++ b/crates/buzz-relay/src/handlers/artifact.rs
+@@ -24,10 +24,14 @@ pub(crate) async fn accept(
+             .artifact_home(tenant.community(), env.id)
+             .await
+             .map_err(|e| IngestError::Internal(format!("artifact storage: {e}")))?
+-            .ok_or_else(|| {
+-                IngestError::CanvasConflict("conflict: artifact head unavailable".into())
++            .ok_or_else(head_unavailable)?;
++        // A source the sender cannot write answers like a missing artifact.
++        super::ingest::check_channel_write(tenant, state, auth, source)
++            .await
++            .map_err(|e| match e {
++                IngestError::Internal(_) => e,
++                _ => head_unavailable(),
+             })?;
+-        super::ingest::check_channel_write(tenant, state, auth, source).await?;
+         Some(source)
+     } else {
+         None
+@@ -64,6 +68,10 @@ pub(crate) async fn accept(
+     })
+ }
+ 
++fn head_unavailable() -> IngestError {
++    IngestError::CanvasConflict(format!("conflict: {}", buzz_db::artifact::HEAD_UNAVAILABLE))
++}
++
+ /// Live delivery only; unlike kind 9 there are no audit, workflow, or thread
+ /// side effects. Missed deliveries are recovered by replaying stored events.
+ async fn publish(state: &Arc<AppState>, tenant: &TenantContext, stored: &StoredEvent) {
+diff --git a/crates/buzz-relay/src/handlers/command_executor.rs b/crates/buzz-relay/src/handlers/command_executor.rs
+index 460323882a4ad8395925803ba785a14b754c84a0..bab57a3809e2332036df19812466b9f30db5efc0 100644
+--- a/crates/buzz-relay/src/handlers/command_executor.rs
++++ b/crates/buzz-relay/src/handlers/command_executor.rs
+@@ -809,6 +809,9 @@ async fn handle_workflow_def(
+     })
+ }
+ 
++/// Trigger rejection for a missing workflow and for one the sender does not own.
++const WORKFLOW_NOT_FOUND: &str = "invalid: workflow not found or not triggerable by you";
++
+ async fn handle_workflow_trigger(
+     tenant: &TenantContext,
+     state: &Arc<AppState>,
+@@ -835,15 +838,15 @@ async fn handle_workflow_trigger(
+         .db
+         .get_workflow(community_id, workflow_id)
+         .await
+-        .map_err(|_| IngestError::Rejected("invalid: workflow not found".into()))?;
++        .map_err(|_| IngestError::Rejected(WORKFLOW_NOT_FOUND.into()))?;
+ 
+     // 3. Manual triggers execute with the workflow owner's authority, so only
+     // the owner may start them. Channel membership alone is insufficient: a
+     // member could otherwise invoke another user's webhook or message actions.
++    // Anyone else is told the workflow is not found, so the response never
++    // reveals whether a workflow ID exists.
+     if workflow.owner_pubkey != self_bytes {
+-        return Err(IngestError::Rejected(
+-            "forbidden: not authorized to trigger this workflow".into(),
+-        ));
++        return Err(IngestError::Rejected(WORKFLOW_NOT_FOUND.into()));
+     }
+ 
+     // SEC-006: manual triggers must honor the workflow's lifecycle state and
+diff --git a/crates/buzz-relay/src/handlers/event.rs b/crates/buzz-relay/src/handlers/event.rs
+index 5b7b257c1996ff9cca747fdb547a67878628dbcd..a3d8d66ec8f3bdcf9271cc3fdd3e7c2aab01c869 100644
+--- a/crates/buzz-relay/src/handlers/event.rs
++++ b/crates/buzz-relay/src/handlers/event.rs
+@@ -7,7 +7,7 @@ use tracing::{debug, error, info, warn};
+ 
+ use buzz_core::event::StoredEvent;
+ use buzz_core::kind::{
+-    event_kind_u32, is_ephemeral, is_unshared_gated_event, AUTHOR_ONLY_KINDS,
++    event_kind_u32, is_ephemeral, is_unshared_gated_event,
+     KIND_AGENT_OBSERVER_FRAME, KIND_GIFT_WRAP, KIND_PRESENCE_UPDATE,
+ };
+ use buzz_core::observer::{
+@@ -136,7 +136,7 @@ pub async fn filter_fanout_by_access(
+     // only paths that route author-only kinds — so no such delivery can bypass
+     // it. It runs before (and independent of) the channel-membership filter
+     // below because author-only kinds are stored globally (channel_id = None).
+-    let matches = if AUTHOR_ONLY_KINDS.contains(&event_kind_u32(&stored_event.event)) {
++    let matches = if buzz_core::kind::is_author_only_event_kind(&stored_event.event) {
+         let author = stored_event.event.pubkey.to_bytes();
+         matches
+             .into_iter()
+diff --git a/crates/buzz-relay/src/handlers/ingest.rs b/crates/buzz-relay/src/handlers/ingest.rs
+index b46911b4cb589c839757e0653754bb2026d1da56..507f1f68aadb92791c04cc5bc320f69f3dd3b7d3 100644
+--- a/crates/buzz-relay/src/handlers/ingest.rs
++++ b/crates/buzz-relay/src/handlers/ingest.rs
+@@ -626,16 +626,24 @@ pub(crate) fn extract_channel_id(event: &Event) -> Option<Uuid> {
+ pub(crate) enum ReactionChannelResult {
+     Channel(Uuid),
+     NoChannel,
++    /// Missing, soft-deleted, or not readable by the reactor.
+     NotFound,
+     NoTarget,
+     DbError(String),
+ }
+ 
+-/// Derive channel_id from the target event for NIP-25 reactions.
++/// Rejection for a reaction whose target is missing or unusable by the sender.
++/// Every such target gets this text, so it never reveals whether, or where,
++/// the target exists.
++const REACTION_TARGET_NOT_FOUND: &str = "reaction target event not found";
++
++/// Derive channel_id from the target event for NIP-25 reactions. A target
++/// `reader` may not read resolves as `NotFound`.
+ pub(crate) async fn derive_reaction_channel(
+     community_id: CommunityId,
+     db: &buzz_db::Db,
+     event: &Event,
++    reader: &[u8],
+ ) -> ReactionChannelResult {
+     let target_hex = match event.tags.iter().rev().find_map(|tag| {
+         if tag.kind().to_string() == "e" {
+@@ -663,6 +671,9 @@ pub(crate) async fn derive_reaction_channel(
+         .get_event_by_id_for_event_write(community_id, &id_bytes)
+         .await
+     {
++        Ok(Some(target)) if !super::req::event_visible_to_reader(&target.event, reader) => {
++            ReactionChannelResult::NotFound
++        }
+         Ok(Some(target)) => match target.channel_id {
+             Some(ch_id) => ReactionChannelResult::Channel(ch_id),
+             None => ReactionChannelResult::NoChannel,
+@@ -919,6 +930,18 @@ impl ThreadMetadataOwned {
+     }
+ }
+ 
++/// Whether `target` is in `channel_id` and readable by `reader`. Write paths
++/// that reference an event reject a target failing this exactly as a missing
++/// one, so the rejection never reveals whether, or where, the target exists.
++fn target_readable_in_channel(
++    target: &buzz_core::StoredEvent,
++    channel_id: Uuid,
++    reader: &[u8],
++) -> bool {
++    target.channel_id == Some(channel_id)
++        && super::req::event_visible_to_reader(&target.event, reader)
++}
++
+ /// Resolve NIP-10 thread ancestry from e-tags.
+ pub(crate) async fn resolve_nip10_thread_meta(
+     community_id: CommunityId,
+@@ -945,18 +968,12 @@ pub(crate) async fn resolve_nip10_thread_meta(
+             .get_thread_metadata_by_event(community_id, &parent_bytes),
+     );
+ 
++    let reader = effective_message_author(event, &state.relay_keypair.public_key());
+     let parent_event = parent_event_result
+         .map_err(|e| format!("db error looking up parent: {e}"))?
++        .filter(|parent| target_readable_in_channel(parent, channel_id, &reader))
+         .ok_or_else(|| "reply parent not found".to_string())?;
+ 
+-    match parent_event.channel_id {
+-        Some(parent_ch) if parent_ch != channel_id => {
+-            return Err("parent event belongs to a different channel".to_string());
+-        }
+-        None => return Err("parent event has no channel association".to_string()),
+-        _ => {}
+-    }
+-
+     let parent_created =
+         chrono::DateTime::from_timestamp(parent_event.event.created_at.as_secs() as i64, 0)
+             .unwrap_or_else(Utc::now);
+@@ -1128,6 +1145,7 @@ pub(crate) async fn resolve_relay_reply_thread_meta(
+     community_id: CommunityId,
+     parent_hex: &str,
+     channel_id: Uuid,
++    reader: &[u8],
+     state: &AppState,
+ ) -> Result<ReplyAncestry, String> {
+     let parent_bytes =
+@@ -1144,16 +1162,9 @@ pub(crate) async fn resolve_relay_reply_thread_meta(
+ 
+     let parent_event = parent_event_result
+         .map_err(|e| format!("db error looking up parent: {e}"))?
++        .filter(|parent| target_readable_in_channel(parent, channel_id, reader))
+         .ok_or_else(|| "reply parent not found".to_string())?;
+ 
+-    match parent_event.channel_id {
+-        Some(parent_ch) if parent_ch != channel_id => {
+-            return Err("parent event belongs to a different channel".to_string());
+-        }
+-        None => return Err("parent event has no channel association".to_string()),
+-        _ => {}
+-    }
+-
+     let parent_created =
+         chrono::DateTime::from_timestamp(parent_event.event.created_at.as_secs() as i64, 0)
+             .unwrap_or_else(Utc::now);
+@@ -1251,6 +1262,10 @@ pub(crate) fn effective_message_author(event: &Event, relay_pubkey: &nostr::Publ
+     event.pubkey.to_bytes().to_vec()
+ }
+ 
++/// Rejection for an edit whose target is missing or not editable by the
++/// sender, so the error never reveals whether, or where, the target exists.
++const EDIT_TARGET_DENIED: &str = "edit target not found or not editable by you";
++
+ /// Validate kind:40003 edit ownership — event.pubkey must match target's effective author,
+ /// or the actor must be the owning human of the agent that authored the target message.
+ async fn validate_edit_ownership(
+@@ -1278,27 +1293,21 @@ async fn validate_edit_ownership(
+ 
+     let target_bytes =
+         hex::decode(&target_hex).map_err(|_| "invalid target event ID".to_string())?;
++    // Kind 40003 skips the generic membership gate, so this validator is the
++    // only authority: a target outside the edit's `h` channel, unreadable, or
++    // not the actor's to edit is denied exactly like a missing one.
++    let edit_channel_id =
++        extract_channel_id(event).ok_or_else(|| "missing h tag for edit".to_string())?;
++    let actor = event.pubkey.to_bytes().to_vec();
+     let target_event = state
+         .db
+         .get_event_by_id_for_event_write(community_id, &target_bytes)
+         .await
+         .map_err(|e| format!("db error: {e}"))?
+-        .ok_or_else(|| "edit target event not found".to_string())?;
+-
+-    // Verify target belongs to the same channel as the edit event.
+-    let edit_channel_id = extract_channel_id(event);
+-    match (edit_channel_id, target_event.channel_id) {
+-        (Some(edit_ch), Some(target_ch)) if edit_ch != target_ch => {
+-            return Err("target event belongs to a different channel".to_string());
+-        }
+-        (Some(_), None) => {
+-            return Err("target event has no channel".to_string());
+-        }
+-        _ => {} // Same channel or no channel context — OK
+-    }
++        .filter(|target| target_readable_in_channel(target, edit_channel_id, &actor))
++        .ok_or_else(|| EDIT_TARGET_DENIED.to_string())?;
+ 
+     let author = effective_message_author(&target_event.event, &state.relay_keypair.public_key());
+-    let actor = event.pubkey.to_bytes().to_vec();
+     if author == actor {
+         // Author editing their own message: re-gate on membership/open visibility so that
+         // a removed private-channel member cannot mutate old messages after access is revoked.
+@@ -1315,7 +1324,7 @@ async fn validate_edit_ownership(
+                     .map(|ch| ch.visibility == "open")
+                     .unwrap_or(false);
+                 if !is_open {
+-                    return Err("restricted: not a channel member".to_string());
++                    return Err(EDIT_TARGET_DENIED.to_string());
+                 }
+             }
+         }
+@@ -1327,7 +1336,7 @@ async fn validate_edit_ownership(
+             .await
+             .map_err(|e| format!("db error checking agent ownership: {e}"))?;
+         if !is_owner {
+-            return Err("must be event author to edit".to_string());
++            return Err(EDIT_TARGET_DENIED.to_string());
+         }
+     }
+     Ok(())
+@@ -1356,6 +1365,9 @@ async fn validate_forum_vote_target(
+             }
+         })
+         .ok_or_else(|| "missing e tag for vote target".to_string())?;
++    let vote_channel_id =
++        extract_channel_id(event).ok_or_else(|| "missing h tag for vote".to_string())?;
++    let reader = effective_message_author(event, &state.relay_keypair.public_key());
+ 
+     let target_bytes =
+         hex::decode(&target_hex).map_err(|_| "invalid target event ID".to_string())?;
+@@ -1364,24 +1376,15 @@ async fn validate_forum_vote_target(
+         .get_event_by_id_for_event_write(community_id, &target_bytes)
+         .await
+         .map_err(|e| format!("db error: {e}"))?
++        // Readability first: the kind diagnostic below would otherwise reveal
++        // an inaccessible event's existence and kind.
++        .filter(|target| target_readable_in_channel(target, vote_channel_id, &reader))
+         .ok_or_else(|| "vote target event not found".to_string())?;
+ 
+     let target_kind = event_kind_u32(&target_event.event);
+     if target_kind != KIND_FORUM_POST && target_kind != KIND_FORUM_COMMENT {
+         return Err("vote target must be a forum post or comment".to_string());
+     }
+-
+-    // Verify target belongs to the same channel as the vote event.
+-    let vote_channel_id = extract_channel_id(event);
+-    match (vote_channel_id, target_event.channel_id) {
+-        (Some(vote_ch), Some(target_ch)) if vote_ch != target_ch => {
+-            return Err("target event belongs to a different channel".to_string());
+-        }
+-        (Some(_), None) => {
+-            return Err("target event has no channel".to_string());
+-        }
+-        _ => {}
+-    }
+     Ok(())
+ }
+ 
+@@ -2540,7 +2543,7 @@ async fn ingest_event_inner(
+     // report; that is tolerated because reports are non-actioning signals and
+     // remain visible only to moderators.
+     if kind_u32 == KIND_REPORT {
+-        super::report::handle_report_event(tenant, &event, state)
++        super::report::handle_report_event(tenant, &event, state, auth.channel_ids())
+             .await
+             .map_err(IngestError::Rejected)?;
+         return Ok(IngestResult {
+@@ -2568,14 +2571,44 @@ async fn ingest_event_inner(
+         });
+     }
+ 
++    // NIP-09: kind:5 may reference targets via `e` tag (regular events) OR
++    // `a` tag (addressable/parameterized-replaceable events like kind:30620).
++    // Checked before any target lookup so every target faces the gates below.
++    if kind_u32 == KIND_NIP29_DELETE_EVENT || kind_u32 == KIND_DELETION {
++        let e_count = count_e_tags(&event);
++        let a_count = event
++            .tags
++            .iter()
++            .filter(|t| t.kind().to_string() == "a")
++            .count();
++        if (e_count + a_count) != 1 {
++            return Err(IngestError::Rejected(format!(
++                "invalid: deletion events must reference exactly one target via e or a tag (got e={e_count}, a={a_count})"
++            )));
++        }
++    }
++
++    // A reaction, or a kind 5 targeting an event, derives its channel from
++    // that target, so every channel gate below would reveal the target's
++    // existence or location. Their rejections all collapse to the kind's
++    // not-found denial.
++    let target_denial = if kind_u32 == KIND_REACTION {
++        Some(REACTION_TARGET_NOT_FOUND)
++    } else if kind_u32 == KIND_DELETION
++        && !crate::handlers::side_effects::extract_target_event_ids(&event).is_empty()
++    {
++        Some(crate::handlers::side_effects::DELETION_TARGET_DENIED)
++    } else {
++        None
++    };
++    let target_denied = |reason: &str| IngestError::Rejected(format!("invalid: {reason}"));
+     let mut channel_id = if kind_u32 == KIND_REACTION {
+-        match derive_reaction_channel(tenant.community(), &state.db, &event).await {
++        let reader = effective_message_author(&event, &state.relay_keypair.public_key());
++        match derive_reaction_channel(tenant.community(), &state.db, &event, &reader).await {
+             ReactionChannelResult::Channel(ch_id) => Some(ch_id),
+             ReactionChannelResult::NoChannel => None,
+             ReactionChannelResult::NotFound => {
+-                return Err(IngestError::Rejected(
+-                    "invalid: reaction target event not found".into(),
+-                ));
++                return Err(target_denied(REACTION_TARGET_NOT_FOUND));
+             }
+             ReactionChannelResult::NoTarget => {
+                 return Err(IngestError::Rejected(
+@@ -2591,43 +2624,27 @@ async fn ingest_event_inner(
+     } else if is_gift_wrap {
+         None
+     } else if kind_u32 == KIND_DELETION {
+-        // Standard deletion (kind:5): derive channel from the target event.
+-        // kind:5 events don't carry an h-tag, so we look up the target event
+-        // and use its channel_id. This ensures token-channel, membership, and
+-        // archived checks run against the correct channel.
+-        let target_hex = event.tags.iter().find_map(|t| {
+-            if t.kind().to_string() == "e" {
+-                t.content().and_then(|v| {
+-                    if v.len() == 64 && v.chars().all(|c| c.is_ascii_hexdigit()) {
+-                        Some(v.to_string())
+-                    } else {
+-                        None
+-                    }
+-                })
+-            } else {
+-                None
+-            }
+-        });
+-        match target_hex {
+-            Some(hex) => {
+-                let target_bytes = hex::decode(&hex).map_err(|_| {
+-                    IngestError::Rejected("invalid: malformed deletion target id".into())
+-                })?;
+-                match state
+-                    .db
+-                    .get_event_by_id_for_event_write(tenant.community(), &target_bytes)
+-                    .await
+-                {
+-                    Ok(Some(target)) => target.channel_id,
+-                    Ok(None) => None, // target not found — validate_standard_deletion will catch this
+-                    Err(e) => {
+-                        return Err(IngestError::Internal(format!(
+-                            "error: looking up deletion target: {e}"
+-                        )));
+-                    }
+-                }
++        // Standard deletion (kind:5): decide authority over the target before
++        // the channel gates below, whose errors would otherwise reveal whether
++        // the target exists and where. The target's channel, soft-deleted or
++        // not (kind:5 carries no h-tag), then faces the token-channel,
++        // membership, and archived checks.
++        match crate::handlers::side_effects::extract_target_event_ids(&event).first() {
++            Some(target_id) => {
++                let actor = effective_message_author(&event, &state.relay_keypair.public_key());
++                crate::handlers::side_effects::authorized_standard_deletion_target(
++                    tenant, state, &actor, target_id,
++                )
++                .await
++                .map_err(|e| {
++                    IngestError::Internal(format!("error: looking up deletion target: {e}"))
++                })?
++                .ok_or_else(|| {
++                    target_denied(crate::handlers::side_effects::DELETION_TARGET_DENIED)
++                })?
++                .channel_id
+             }
+-            None => None, // no e-tag — will be caught by single-target enforcement (step 12)
++            None => None,
+         }
+     } else {
+         extract_channel_id(&event)
+@@ -2644,7 +2661,12 @@ async fn ingest_event_inner(
+     }
+ 
+     if let Some(ch_id) = channel_id {
+-        check_token_channel_access(&auth, ch_id).map_err(IngestError::AuthFailed)?;
++        check_token_channel_access(&auth, ch_id).map_err(|e| match target_denial {
++            Some(reason) => target_denied(reason),
++            None => IngestError::AuthFailed(e),
++        })?;
++    } else if let (Some(reason), Some(_)) = (target_denial, auth.channel_ids()) {
++        return Err(target_denied(reason));
+     } else if auth.channel_ids().is_some() {
+         // Channel-scoped tokens cannot publish global events — that would bypass
+         // the token's channel restriction. This covers kind:1 (global text notes),
+@@ -2727,7 +2749,10 @@ async fn ingest_event_inner(
+                 },
+                 state_for_request(tenant, auth.pubkey()),
+             );
+-            auth_result.map_err(IngestError::Rejected)?;
++            auth_result.map_err(|e| match target_denial {
++                Some(reason) => target_denied(reason),
++                None => IngestError::Rejected(e),
++            })?;
+         }
+     }
+ 
+@@ -2865,6 +2890,16 @@ async fn ingest_event_inner(
+     }
+ 
+     if kind_u32 == KIND_DELETION {
++        // The target's archived channel blocks the deletion, so it must
++        // reject before the validator's target-kind diagnostics.
++        if let Some(reason) = target_denial {
++            if channel_row
++                .as_ref()
++                .is_some_and(|ch| ch.archived_at.is_some())
++            {
++                return Err(target_denied(reason));
++            }
++        }
+         crate::handlers::side_effects::validate_standard_deletion_event(tenant, &event, state)
+             .await
+             .map_err(|e| IngestError::Rejected(format!("invalid: {e}")))?;
+@@ -2881,7 +2916,10 @@ async fn ingest_event_inner(
+         if !is_unarchive {
+             if let Some(channel) = &channel_row {
+                 if channel.archived_at.is_some() {
+-                    return Err(IngestError::Rejected("invalid: channel is archived".into()));
++                    return Err(match target_denial {
++                        Some(reason) => target_denied(reason),
++                        None => IngestError::Rejected("invalid: channel is archived".into()),
++                    });
+                 }
+             }
+         }
+@@ -2905,22 +2943,6 @@ async fn ingest_event_inner(
+         return Ok(result);
+     }
+ 
+-    // NIP-09: kind:5 may reference targets via `e` tag (regular events) OR
+-    // `a` tag (addressable/parameterized-replaceable events like kind:30620).
+-    if kind_u32 == KIND_NIP29_DELETE_EVENT || kind_u32 == KIND_DELETION {
+-        let e_count = count_e_tags(&event);
+-        let a_count = event
+-            .tags
+-            .iter()
+-            .filter(|t| t.kind().to_string() == "a")
+-            .count();
+-        if (e_count + a_count) != 1 {
+-            return Err(IngestError::Rejected(format!(
+-                "invalid: deletion events must reference exactly one target via e or a tag (got e={e_count}, a={a_count})"
+-            )));
+-        }
+-    }
+-
+     if kind_u32 == KIND_STREAM_MESSAGE_EDIT {
+         validate_edit_ownership(tenant.community(), &event, state)
+             .await
+@@ -3281,9 +3303,9 @@ async fn ingest_event_inner(
+             .map_err(|e| IngestError::Internal(format!("error: {e}")))?
+         {
+             buzz_db::ReactionEventInsertOutcome::TargetMissing => {
+-                return Err(IngestError::Rejected(
+-                    "invalid: reaction target event not found".into(),
+-                ));
++                return Err(IngestError::Rejected(format!(
++                    "invalid: {REACTION_TARGET_NOT_FOUND}"
++                )));
+             }
+             buzz_db::ReactionEventInsertOutcome::Duplicate => {
+                 return Ok(IngestResult {
+@@ -6699,6 +6721,346 @@ mod postgres_tests {
+             .expect("untagged canvas write must append unconditionally");
+     }
+ 
++    /// A channel-scoped token gets the same kind 5 rejection for a target it
++    /// has no authority over whether that target is missing, soft-deleted
++    /// (no live channel), or live in a channel outside the token's scope.
++    #[tokio::test]
++    #[ignore = "requires Postgres"]
++    async fn scoped_token_deletion_rejection_does_not_reveal_target() {
++        use buzz_db::channel::{ChannelType, ChannelVisibility};
++        use nostr::{Keys, Kind, Tag};
++
++        let db_url = std::env::var("BUZZ_TEST_DATABASE_URL")
++            .or_else(|_| std::env::var("DATABASE_URL"))
++            .unwrap_or_else(|_| "postgres://buzz:buzz_dev@localhost:5432/buzz".to_string()); // sadscan:disable np.postgres.1
++        let pool = sqlx::PgPool::connect(&db_url)
++            .await
++            .expect("connect test Postgres");
++        let state = build_canvas_ingest_state(&db_url, &pool).await;
++        let host = format!("scoped-deletion-{}.test", Uuid::new_v4().simple());
++        let community = state
++            .db
++            .ensure_configured_community(&host)
++            .await
++            .expect("ensure community")
++            .id;
++        let tenant = TenantContext::resolved(community, &host);
++        let tracer: Arc<dyn buzz_conformance::Tracer> = Arc::new(VecTracer::default());
++
++        let author = Keys::generate();
++        let sender = Keys::generate();
++        let mut channels = Vec::new();
++        for creator in [&author, &sender] {
++            let channel_id = Uuid::new_v4();
++            state
++                .db
++                .create_channel_with_id(
++                    community,
++                    channel_id,
++                    &format!("scoped-deletion-{}", channel_id.simple()),
++                    ChannelType::Stream,
++                    ChannelVisibility::Open,
++                    None,
++                    creator.public_key().to_bytes().as_slice(),
++                    None,
++                )
++                .await
++                .expect("create test channel");
++            channels.push(channel_id);
++        }
++        let author_auth = || IngestAuth::Http {
++            pubkey: author.public_key(),
++            scopes: vec![Scope::MessagesWrite],
++            auth_method: HttpAuthMethod::Nip98,
++        };
++        let publish = |kind: u16, tags: Vec<Tag>, keys: &Keys| {
++            nostr::EventBuilder::new(Kind::Custom(kind), Uuid::new_v4().to_string())
++                .tags(tags)
++                .sign_with_keys(keys)
++                .expect("sign")
++        };
++        let h = Tag::parse(["h", &channels[0].to_string()]).unwrap();
++        let live = publish(9, vec![h.clone()], &author);
++        let deleted = publish(9, vec![h.clone()], &author);
++        let global = publish(1, vec![], &author);
++        let in_scope = publish(9, vec![h], &author);
++        for event in [
++            live.clone(),
++            deleted.clone(),
++            global.clone(),
++            in_scope.clone(),
++        ] {
++            ingest_event_inner(&state, &tracer, &tenant, event, author_auth())
++                .await
++                .expect("store message");
++        }
++        let delete = |target: &str, keys: &Keys| {
++            publish(
++                KIND_DELETION as u16,
++                vec![Tag::parse(["e", target]).unwrap()],
++                keys,
++            )
++        };
++        ingest_event_inner(
++            &state,
++            &tracer,
++            &tenant,
++            delete(&deleted.id.to_hex(), &author),
++            author_auth(),
++        )
++        .await
++        .expect("soft-delete message");
++
++        let scoped_auth = |keys: &Keys, channel: Uuid| IngestAuth::Nip42 {
++            pubkey: keys.public_key(),
++            scopes: vec![Scope::MessagesWrite],
++            channel_ids: Some(vec![channel]),
++            conn_id: Uuid::new_v4(),
++        };
++        // Neither a non-owner nor the author holding a token scoped to the
++        // sender's channel may delete; both get the missing-target rejection.
++        for keys in [&sender, &author] {
++            for target in [
++                "a".repeat(64),
++                live.id.to_hex(),
++                deleted.id.to_hex(),
++                global.id.to_hex(),
++            ] {
++                let auth = scoped_auth(keys, channels[1]);
++                match ingest_event_inner(&state, &tracer, &tenant, delete(&target, keys), auth)
++                    .await
++                {
++                    Err(IngestError::Rejected(msg)) => assert_eq!(
++                        msg, "invalid: deletion target not found or not deletable by you",
++                        "target {target}"
++                    ),
++                    Err(other) => panic!("target {target}: {other:?}"),
++                    Ok(_) => panic!("target {target}: deletion accepted"),
++                }
++            }
++        }
++        // Kind 9005 from the author's out-of-scope token, naming the channel
++        // the token covers, cannot reveal where the target lives either.
++        let redact = |target: &str| {
++            publish(
++                KIND_NIP29_DELETE_EVENT as u16,
++                vec![
++                    Tag::parse(["e", target]).unwrap(),
++                    Tag::parse(["h", &channels[1].to_string()]).unwrap(),
++                ],
++                &author,
++            )
++        };
++        for target in ["a".repeat(64), live.id.to_hex(), global.id.to_hex()] {
++            match ingest_event_inner(
++                &state,
++                &tracer,
++                &tenant,
++                redact(&target),
++                scoped_auth(&author, channels[1]),
++            )
++            .await
++            {
++                Err(IngestError::Rejected(msg)) => assert_eq!(
++                    msg, "invalid: deletion target not found or not deletable by you",
++                    "9005 target {target}"
++                ),
++                Err(other) => panic!("9005 target {target}: {other:?}"),
++                Ok(_) => panic!("9005 target {target}: deletion accepted"),
++            }
++        }
++        // A token scoped to the target's channel still deletes.
++        ingest_event_inner(
++            &state,
++            &tracer,
++            &tenant,
++            delete(&in_scope.id.to_hex(), &author),
++            scoped_auth(&author, channels[0]),
++        )
++        .await
++        .expect("in-scope token deletes the author's message");
++        // Re-deleting a soft-deleted message stores the deletion in its channel.
++        let redeletion = delete(&deleted.id.to_hex(), &author);
++        ingest_event_inner(&state, &tracer, &tenant, redeletion.clone(), author_auth())
++            .await
++            .expect("author re-deletes a soft-deleted message");
++        let stored = state
++            .db
++            .get_event_by_id(community, redeletion.id.as_bytes())
++            .await
++            .expect("read re-deletion")
++            .expect("re-deletion stored");
++        assert_eq!(stored.channel_id, Some(channels[0]));
++    }
++
++    /// A community with `author`'s live message in an open channel, an
++    /// author global note, and a second open channel for out-of-scope tokens.
++    struct ScopedTargetFixture {
++        state: Arc<crate::state::AppState>,
++        tenant: TenantContext,
++        tracer: Arc<dyn buzz_conformance::Tracer>,
++        author: nostr::Keys,
++        sender: nostr::Keys,
++        target_channel: Uuid,
++        other_channel: Uuid,
++        live: Event,
++        global: Event,
++    }
++
++    impl ScopedTargetFixture {
++        async fn new(label: &str) -> Self {
++            use buzz_db::channel::{ChannelType, ChannelVisibility};
++            let state = ingest_state().await;
++            let host = format!("{label}-{}.test", Uuid::new_v4().simple());
++            let community = state
++                .db
++                .ensure_configured_community(&host)
++                .await
++                .expect("ensure community")
++                .id;
++            let tenant = TenantContext::resolved(community, &host);
++            let tracer: Arc<dyn buzz_conformance::Tracer> = Arc::new(VecTracer::default());
++            let (author, sender) = (nostr::Keys::generate(), nostr::Keys::generate());
++            let mut channels = Vec::new();
++            for creator in [&author, &sender] {
++                let channel_id = Uuid::new_v4();
++                state
++                    .db
++                    .create_channel_with_id(
++                        community,
++                        channel_id,
++                        &format!("{label}-{}", channel_id.simple()),
++                        ChannelType::Stream,
++                        ChannelVisibility::Open,
++                        None,
++                        creator.public_key().to_bytes().as_slice(),
++                        None,
++                    )
++                    .await
++                    .expect("create test channel");
++                channels.push(channel_id);
++            }
++            let publish = |kind: u16, tags: Vec<nostr::Tag>| {
++                EventBuilder::new(Kind::Custom(kind), Uuid::new_v4().to_string())
++                    .tags(tags)
++                    .sign_with_keys(&author)
++                    .expect("sign")
++            };
++            let live = publish(
++                9,
++                vec![nostr::Tag::parse(["h", &channels[0].to_string()]).unwrap()],
++            );
++            let global = publish(1, vec![]);
++            for event in [live.clone(), global.clone()] {
++                let auth = IngestAuth::Http {
++                    pubkey: author.public_key(),
++                    scopes: vec![Scope::MessagesWrite],
++                    auth_method: HttpAuthMethod::Nip98,
++                };
++                ingest_event_inner(&state, &tracer, &tenant, event, auth)
++                    .await
++                    .expect("store target");
++            }
++            Self {
++                state,
++                tenant,
++                tracer,
++                author,
++                sender,
++                target_channel: channels[0],
++                other_channel: channels[1],
++                live,
++                global,
++            }
++        }
++
++        fn scoped(&self, channel: Uuid) -> IngestAuth {
++            IngestAuth::Nip42 {
++                pubkey: self.sender.public_key(),
++                scopes: vec![Scope::MessagesWrite],
++                channel_ids: Some(vec![channel]),
++                conn_id: Uuid::new_v4(),
++            }
++        }
++
++        fn sign(&self, kind: u16, tags: Vec<Vec<String>>) -> Event {
++            EventBuilder::new(Kind::Custom(kind), "+")
++                .tags(tags.into_iter().map(|t| nostr::Tag::parse(t).unwrap()))
++                .sign_with_keys(&self.sender)
++                .expect("sign")
++        }
++
++        async fn submit(
++            &self,
++            event: Event,
++            auth: IngestAuth,
++        ) -> Result<IngestResult, IngestError> {
++            ingest_event_inner(&self.state, &self.tracer, &self.tenant, event, auth).await
++        }
++    }
++
++    /// A report sent with a token scoped to another channel answers exactly
++    /// like a report on a missing event.
++    /// Mutation: drop the `token_channels` check in `reporter_can_read` → RED.
++    #[tokio::test]
++    #[ignore = "requires Postgres"]
++    async fn scoped_token_report_does_not_reveal_target() {
++        let f = ScopedTargetFixture::new("scoped-report").await;
++        let author = f.author.public_key().to_hex();
++        let report = |target: String| {
++            f.sign(
++                KIND_REPORT as u16,
++                vec![
++                    vec!["e".into(), target, "spam".into()],
++                    vec!["p".into(), author.clone()],
++                ],
++            )
++        };
++        for target in ["a".repeat(64), f.live.id.to_hex()] {
++            match f
++                .submit(report(target.clone()), f.scoped(f.other_channel))
++                .await
++            {
++                Err(IngestError::Rejected(msg)) => {
++                    assert_eq!(msg, "invalid: report target event not found", "{target}")
++                }
++                Err(other) => panic!("target {target}: {other:?}"),
++                Ok(_) => panic!("target {target}: accepted"),
++            }
++        }
++        f.submit(report(f.live.id.to_hex()), f.scoped(f.target_channel))
++            .await
++            .expect("in-scope token reports the message");
++    }
++
++    /// A reaction sent with a token scoped to another channel, to a channel
++    /// message or to a global note, answers exactly like one to a missing event.
++    /// Mutation: drop the `(Some(reason), Some(_))` arm, or map the token
++    /// check to its own error → RED.
++    #[tokio::test]
++    #[ignore = "requires Postgres"]
++    async fn scoped_token_reaction_does_not_reveal_target() {
++        let f = ScopedTargetFixture::new("scoped-reaction").await;
++        let react = |target: String| f.sign(KIND_REACTION as u16, vec![vec!["e".into(), target]]);
++        for target in ["a".repeat(64), f.live.id.to_hex(), f.global.id.to_hex()] {
++            match f
++                .submit(react(target.clone()), f.scoped(f.other_channel))
++                .await
++            {
++                Err(IngestError::Rejected(msg)) => assert_eq!(
++                    msg,
++                    format!("invalid: {REACTION_TARGET_NOT_FOUND}"),
++                    "{target}"
++                ),
++                Err(other) => panic!("target {target}: {other:?}"),
++                Ok(_) => panic!("target {target}: accepted"),
++            }
++        }
++        f.submit(react(f.live.id.to_hex()), f.scoped(f.target_channel))
++            .await
++            .expect("in-scope token reacts to the message");
++    }
++
+     // ── Owner-aware ban/timeout coverage ─────────────────────────────────────
+ 
+     /// Fresh community plus an agent owned by `owner` (users.agent_owner_pubkey).
+diff --git a/crates/buzz-relay/src/handlers/report.rs b/crates/buzz-relay/src/handlers/report.rs
+index fccf8eb42b59d0e9e355b4e192f1bd57e5cacd19..2e9e1aa4d78296fdc9f0e7b8a658a203cdb6ff0e 100644
+--- a/crates/buzz-relay/src/handlers/report.rs
++++ b/crates/buzz-relay/src/handlers/report.rs
+@@ -20,8 +20,10 @@
+ use std::sync::Arc;
+ 
+ use buzz_core::tenant::TenantContext;
++use buzz_core::StoredEvent;
+ use buzz_db::moderation::{NewReport, ReportTarget};
+ use nostr::Event;
++use uuid::Uuid;
+ 
+ use crate::state::AppState;
+ 
+@@ -41,10 +43,13 @@ pub const REPORT_TYPES: &[&str] = &[
+ /// Rejections use client-safe `invalid:`/`restricted:` reasons. On success
+ /// the report is queued (idempotently, keyed by the signed event id) and the
+ /// event itself is **not** stored or broadcast as a regular event.
++///
++/// `token_channels` is the sender's channel-scoped token restriction, if any.
+ pub async fn handle_report_event(
+     tenant: &TenantContext,
+     event: &Event,
+     state: &Arc<AppState>,
++    token_channels: Option<&[Uuid]>,
+ ) -> Result<(), String> {
+     let parsed = parse_report(event)?;
+     let reporter_pubkey = event.pubkey.to_bytes();
+@@ -55,9 +60,20 @@ pub async fn handle_report_event(
+                 .db
+                 .get_event_by_id(tenant.community(), &event_id)
+                 .await
+-                .map_err(|e| format!("error: database error resolving report target: {e}"))?
+-                .ok_or_else(|| "invalid: report target event not found".to_string())?;
+-            (ReportTarget::Event(event_id), stored.channel_id)
++                .map_err(|e| format!("error: database error resolving report target: {e}"))?;
++            // A target the reporter cannot read is rejected exactly like a
++            // missing one, so the response never reveals whether it exists.
++            let readable = match &stored {
++                Some(stored) => {
++                    reporter_can_read(tenant, state, stored, &reporter_pubkey, token_channels)
++                        .await?
++                }
++                None => false,
++            };
++            match stored {
++                Some(stored) if readable => (ReportTarget::Event(event_id), stored.channel_id),
++                _ => return Err("invalid: report target event not found".to_string()),
++            }
+         }
+         ParsedReportTarget::Blob { sha256, .. } => {
+             let sha_hex = hex::encode(&sha256);
+@@ -93,6 +109,32 @@ pub async fn handle_report_event(
+     Ok(())
+ }
+ 
++/// Whether `reporter` may read `target`: the event-level read gate, plus the
++/// channel's membership-or-open rule and the token's channel scope for a
++/// channel event.
++async fn reporter_can_read(
++    tenant: &TenantContext,
++    state: &AppState,
++    target: &StoredEvent,
++    reporter: &[u8],
++    token_channels: Option<&[Uuid]>,
++) -> Result<bool, String> {
++    if !super::req::event_visible_to_reader(&target.event, reporter) {
++        return Ok(false);
++    }
++    let Some(channel_id) = target.channel_id else {
++        return Ok(true);
++    };
++    if token_channels.is_some_and(|allowed| !allowed.contains(&channel_id)) {
++        return Ok(false);
++    }
++    match super::ingest::check_channel_membership(tenant, state, channel_id, reporter, None).await {
++        Ok(()) => Ok(true),
++        Err(reason) if reason.starts_with("error:") => Err(reason),
++        Err(_) => Ok(false),
++    }
++}
++
+ #[derive(Debug, Clone, PartialEq, Eq)]
+ struct ParsedReport<'a> {
+     target: ParsedReportTarget,
+diff --git a/crates/buzz-relay/src/handlers/req.rs b/crates/buzz-relay/src/handlers/req.rs
+index c2296ee717d6b429ee79454ed28cbf496fb322a3..bac2fb7003116e0f2124b40e26814344ff368e33 100644
+--- a/crates/buzz-relay/src/handlers/req.rs
++++ b/crates/buzz-relay/src/handlers/req.rs
+@@ -8,7 +8,7 @@ use tracing::{debug, warn};
+ use buzz_core::filter::filters_match;
+ use buzz_core::kind::{
+     is_unshared_gated_event, AUTHOR_ONLY_KINDS, KIND_AGENT_ENGRAM, KIND_AGENT_TURN_METRIC,
+-    KIND_DM_VISIBILITY, KIND_HUDDLE_LIVENESS, P_GATED_KINDS, RESULT_GATED_KINDS,
++    KIND_DELETION, KIND_DM_VISIBILITY, KIND_HUDDLE_LIVENESS, P_GATED_KINDS, RESULT_GATED_KINDS,
+     SHARED_GATED_KINDS,
+ };
+ use buzz_core::tenant::TenantContext;
+@@ -1607,8 +1607,11 @@ pub(crate) fn engram_filters_authorized(filters: &[Filter], authed_pubkey_hex: &
+ /// author-only events from the aggregate count.
+ pub(crate) fn filter_can_match_author_only_kinds(filter: &Filter) -> bool {
+     filter.kinds.as_ref().is_none_or(|ks| {
+-        ks.iter()
+-            .any(|k| AUTHOR_ONLY_KINDS.contains(&(k.as_u16() as u32)))
++        ks.iter().any(|k| {
++            let k = k.as_u16() as u32;
++            // Deletions of author-only events inherit their privacy.
++            k == KIND_DELETION || AUTHOR_ONLY_KINDS.contains(&k)
++        })
+     })
+ }
+ 
+@@ -1667,12 +1670,13 @@ pub(crate) fn result_gated_count_safe_for_pushdown(
+         .is_some_and(|values| !values.is_empty() && values.iter().all(|v| v == authed_pubkey_hex))
+ }
+ 
+-/// Returns `true` if the event is an author-only kind and the requester is NOT
+-/// the author. Used as a per-event filter during historical delivery and fan-out
++/// Returns `true` if the event is author-only (see
++/// [`buzz_core::kind::is_author_only_event_kind`]) and the requester is NOT the
++/// author. Used as a per-event filter during historical delivery and fan-out
+ /// to silently omit unauthorized events from mixed-kind result sets.
+ pub(crate) fn is_author_only_event(event: &nostr::Event, requester_pubkey_bytes: &[u8]) -> bool {
+-    let kind_u32 = event.kind.as_u16() as u32;
+-    AUTHOR_ONLY_KINDS.contains(&kind_u32) && event.pubkey.to_bytes() != requester_pubkey_bytes
++    buzz_core::kind::is_author_only_event_kind(event)
++        && event.pubkey.to_bytes() != requester_pubkey_bytes
+ }
+ 
+ /// Combined per-event result-visibility check for all gated event classes.
+@@ -3009,6 +3013,20 @@ mod tests {
+         (agent, owner, attacker)
+     }
+ 
++    #[test]
++    fn count_fallback_covers_filters_that_can_match_private_deletions() {
++        assert!(filter_can_match_author_only_kinds(&Filter::new()));
++        assert!(filter_can_match_author_only_kinds(
++            &Filter::new().id(nostr::EventId::all_zeros())
++        ));
++        assert!(filter_can_match_author_only_kinds(
++            &Filter::new().kinds([nostr::Kind::EventDeletion, nostr::Kind::TextNote])
++        ));
++        assert!(!filter_can_match_author_only_kinds(
++            &Filter::new().kind(nostr::Kind::TextNote)
++        ));
++    }
++
+     #[test]
+     fn push_lease_requires_self_author_filter_and_count_fallback() {
+         let (owner, other, _) = three_pubkeys();
+@@ -3031,6 +3049,25 @@ mod tests {
+         assert!(filter_can_match_author_only_kinds(&own));
+     }
+ 
++    #[test]
++    fn startos_private_deletion_read_boundary() {
++        let author = nostr::Keys::generate();
++        let other = nostr::Keys::generate();
++        for &kind in buzz_core::kind::AUTHOR_ONLY_KINDS {
++            let deletion = nostr::EventBuilder::new(nostr::Kind::EventDeletion, "private reason")
++                .tags([nostr::Tag::parse(["k", &kind.to_string()]).unwrap()])
++                .sign_with_keys(&author).unwrap();
++            assert!(!event_visible_to_reader(&deletion, &other.public_key().to_bytes()), "private deletion leaked: {kind}");
++            assert!(event_visible_to_reader(&deletion, &author.public_key().to_bytes()));
++        }
++        let public = nostr::EventBuilder::new(nostr::Kind::EventDeletion, "public reason")
++            .tags([nostr::Tag::parse(["k", "1"]).unwrap()])
++            .sign_with_keys(&author).unwrap();
++        assert!(event_visible_to_reader(&public, &other.public_key().to_bytes()));
++        assert!(filter_can_match_author_only_kinds(&Filter::new().kind(nostr::Kind::EventDeletion)));
++        assert!(filter_can_match_author_only_kinds(&Filter::new().id(public.id)));
++    }
++
+     #[test]
+     fn mixed_filter_omits_another_authors_push_lease() {
+         let owner_keys = nostr::Keys::generate();
+diff --git a/crates/buzz-relay/src/handlers/side_effects.rs b/crates/buzz-relay/src/handlers/side_effects.rs
+index 250b289f446634403201b1aa40bbf49645993dee..8cc7d3abc6be9e41f031ffc7fe4af0ae940b4f60 100644
+--- a/crates/buzz-relay/src/handlers/side_effects.rs
++++ b/crates/buzz-relay/src/handlers/side_effects.rs
+@@ -7,11 +7,11 @@ use tracing::{info, warn};
+ use uuid::Uuid;
+ 
+ use buzz_core::kind::{
+-    event_kind_u32, is_parameterized_replaceable, KIND_AGENT_PROFILE, KIND_DM_VISIBILITY,
+-    KIND_GIT_REPO_ANNOUNCEMENT, KIND_IA_ARCHIVED, KIND_IA_ARCHIVED_LIST, KIND_IA_UNARCHIVED,
+-    KIND_MEMBER_ADDED_NOTIFICATION, KIND_MEMBER_REMOVED_NOTIFICATION, KIND_NIP29_GROUP_ADMINS,
+-    KIND_NIP29_GROUP_MEMBERS, KIND_NIP29_GROUP_METADATA, KIND_NIP43_MEMBERSHIP_LIST, KIND_REACTION,
+-    KIND_THREAD_SUMMARY,
++    event_kind_u32, is_parameterized_replaceable, AUTHOR_ONLY_KINDS, KIND_AGENT_PROFILE,
++    KIND_DM_VISIBILITY, KIND_GIT_REPO_ANNOUNCEMENT, KIND_IA_ARCHIVED, KIND_IA_ARCHIVED_LIST,
++    KIND_IA_UNARCHIVED, KIND_MEMBER_ADDED_NOTIFICATION, KIND_MEMBER_REMOVED_NOTIFICATION,
++    KIND_NIP29_GROUP_ADMINS, KIND_NIP29_GROUP_MEMBERS, KIND_NIP29_GROUP_METADATA,
++    KIND_NIP43_MEMBERSHIP_LIST, KIND_REACTION, KIND_THREAD_SUMMARY,
+ };
+ use buzz_core::StoredEvent;
+ use buzz_db::channel::{MemberRecord, MemberRole};
+@@ -358,6 +358,70 @@ pub async fn handle_side_effects(
+     }
+ }
+ 
++/// Rejection for a deletion whose sender may not delete the target. A missing
++/// target gets the same text, so the error never reveals whether, or where,
++/// the target exists.
++pub(crate) const DELETION_TARGET_DENIED: &str = "deletion target not found or not deletable by you";
++
++/// The kind 5 target `target_id`, including a soft-deleted one, when `actor`
++/// is its effective author or that author's owning human; `None` when the
++/// target is missing or `actor` has no authority over it.
++pub(crate) async fn authorized_standard_deletion_target(
++    tenant: &TenantContext,
++    state: &Arc<AppState>,
++    actor: &[u8],
++    target_id: &[u8],
++) -> anyhow::Result<Option<StoredEvent>> {
++    let Some(target) = state
++        .db
++        .get_event_by_id_including_deleted_for_event_write(tenant.community(), target_id)
++        .await?
++    else {
++        return Ok(None);
++    };
++    let author = effective_message_author(&target.event, &state.relay_keypair.public_key());
++    let authorized = author == actor
++        || state
++            .db
++            .is_agent_owner(tenant.community(), &author, actor)
++            .await?;
++    Ok(authorized.then_some(target))
++}
++
++/// Whether `actor` may delete `author`'s event in `channel_id` with kind 9005:
++/// the author while still a member or the channel is open (a removed member
++/// of a private channel loses this), a channel owner/admin, or the owning
++/// human of the author agent, even when that human is not a channel member.
++async fn may_delete_channel_event(
++    tenant: &TenantContext,
++    state: &Arc<AppState>,
++    event: &Event,
++    channel_id: Uuid,
++    author: &[u8],
++    actor: &[u8],
++) -> anyhow::Result<bool> {
++    if author_delete_can_use_self_delete_path(author, actor, event)
++        && (state
++            .is_member_cached(tenant.community(), channel_id, actor)
++            .await?
++            || state
++                .db
++                .get_channel_for_event_write(tenant.community(), channel_id)
++                .await
++                .map(|ch| ch.visibility == "open")
++                .unwrap_or(false))
++    {
++        return Ok(true);
++    }
++    Ok(actor_is_channel_owner_or_admin(
++        &state.db.get_members(tenant.community(), channel_id).await?,
++        actor,
++    ) || state
++        .db
++        .is_agent_owner(tenant.community(), author, actor)
++        .await?)
++}
++
+ /// Validate a standard NIP-09 deletion event before it is stored.
+ ///
+ /// Buzz accepts standard deletions for self-authored events, plus the owning
+@@ -383,6 +447,9 @@ pub async fn validate_standard_deletion_event(
+         if parts.len() < 2 {
+             return Err(anyhow::anyhow!("invalid a-tag format"));
+         }
++        if let Ok(target_kind) = parts[0].parse() {
++            check_deletion_privacy_k_tag(event, target_kind)?;
++        }
+         let target_pubkey_bytes =
+             hex::decode(parts[1]).map_err(|_| anyhow::anyhow!("invalid pubkey in a-tag"))?;
+         if target_pubkey_bytes != actor_bytes
+@@ -391,38 +458,57 @@ pub async fn validate_standard_deletion_event(
+                 .is_agent_owner(tenant.community(), &target_pubkey_bytes, &actor_bytes)
+                 .await?
+         {
+-            return Err(anyhow::anyhow!("must be event author"));
++            return Err(anyhow::anyhow!(DELETION_TARGET_DENIED));
+         }
+         return Ok(());
+     }
+ 
+     for target_id in target_ids {
+-        let target_event = state
+-            .db
+-            .get_event_by_id_including_deleted_for_event_write(tenant.community(), &target_id)
+-            .await?
+-            .ok_or_else(|| anyhow::anyhow!("target event not found"))?;
+-
++        // Authority first: every later error depends on the target's kind,
++        // which a sender without authority must not learn.
++        let target_event =
++            authorized_standard_deletion_target(tenant, state, &actor_bytes, &target_id)
++                .await?
++                .ok_or_else(|| anyhow::anyhow!(DELETION_TARGET_DENIED))?;
+         if matches!(target_event.event.kind.as_u16(), 45010 | 45011) {
+             anyhow::bail!(
+                 "artifacts cannot be deleted with kind 5; use op=delete or kind 9005 redaction"
+             );
+         }
+-        let target_author =
+-            effective_message_author(&target_event.event, &state.relay_keypair.public_key());
+-        if target_author != actor_bytes
+-            && !state
+-                .db
+-                .is_agent_owner(tenant.community(), &target_author, &actor_bytes)
+-                .await?
++        // A deletion of a private deletion would be stored publicly and reveal
++        // the private one's id and timing; NIP-09 gives it no effect anyway.
++        if target_event.event.kind.as_u16() == 5
++            && buzz_core::kind::is_author_only_event_kind(&target_event.event)
+         {
+-            return Err(anyhow::anyhow!("must be event author"));
++            anyhow::bail!("cannot delete a private deletion request");
+         }
++        check_deletion_privacy_k_tag(event, event_kind_u32(&target_event.event))?;
+     }
+ 
+     Ok(())
+ }
+ 
++/// A deletion's read privacy follows its `k` tag (see
++/// `buzz_core::kind::is_author_only_event_kind`), so the tag must agree with
++/// the target: required when the target is author-only, so the deletion cannot
++/// leak its existence, and otherwise forbidden, so a public deletion cannot be
++/// hidden from the readers who need it.
++fn check_deletion_privacy_k_tag(event: &Event, target_kind: u32) -> anyhow::Result<()> {
++    let target_is_author_only = AUTHOR_ONLY_KINDS.contains(&target_kind);
++    let mut names_target = false;
++    for k in buzz_core::kind::k_tag_kinds(event) {
++        if k == target_kind {
++            names_target = true;
++        } else if AUTHOR_ONLY_KINDS.contains(&k) {
++            anyhow::bail!("k tag {k} does not match the deletion target's kind {target_kind}");
++        }
++    }
++    if target_is_author_only && !names_target {
++        anyhow::bail!("deletion of an author-only kind {target_kind} event requires [\"k\",\"{target_kind}\"]");
++    }
++    Ok(())
++}
++
+ /// Returns `true` if `actor_bytes` is the NIP-OA owner of **any** active owner-role
+ /// member in `members`. Used by kind:9002 and kind:9008 to authorize the owning
+ /// human of a channel's agent-owner(s) even when the human is not a channel member.
+@@ -724,77 +810,42 @@ pub async fn validate_admin_event(
+                 })
+                 .ok_or_else(|| anyhow::anyhow!("missing e tag for target event"))?;
+ 
+-            // Verify the target event exists and belongs to the h-tag channel
+-            // BEFORE storage. Fail closed: missing target → reject.
++            // Decide authority before any error that depends on the target:
++            // a missing target and one the actor may not delete share one
++            // rejection. Tombstoned targets read as missing.
++            let denied = || anyhow::anyhow!(DELETION_TARGET_DENIED);
+             let target_event = state
+                 .db
+                 .get_event_by_id_for_event_write(tenant.community(), &target_id)
+                 .await
+                 .map_err(|e| anyhow::anyhow!("db error looking up target: {e}"))?
+-                .ok_or_else(|| anyhow::anyhow!("target event not found"))?;
++                .ok_or_else(denied)?;
++            // For relay-signed REST messages, the real author is in the p tag.
++            let author =
++                effective_message_author(&target_event.event, &state.relay_keypair.public_key());
+ 
+-            match target_event.channel_id {
+-                Some(target_ch) if target_ch != channel_id => {
+-                    return Err(anyhow::anyhow!(
+-                        "target event belongs to a different channel"
+-                    ));
+-                }
+-                None => {
+-                    return Err(anyhow::anyhow!("target event has no channel"));
+-                }
+-                _ => {} // Same channel — OK
++            // A target outside the `h` channel is denied like a missing one:
++            // telling where it lives would need every access gate of a second
++            // channel. The `h` channel's token and archive gates already ran.
++            if target_event.channel_id != Some(channel_id)
++                || !may_delete_channel_event(
++                    tenant,
++                    state,
++                    event,
++                    channel_id,
++                    &author,
++                    &actor_bytes,
++                )
++                .await?
++            {
++                return Err(denied());
+             }
+             if target_event.event.kind.as_u16() == 45011 {
+                 return Err(anyhow::anyhow!(
+                     "artifact removal markers cannot be deleted"
+                 ));
+             }
+-
+-            // Check if actor is the event author.
+-            // For relay-signed REST messages, the real author is in the p tag.
+-            let author =
+-                effective_message_author(&target_event.event, &state.relay_keypair.public_key());
+-            if author_delete_can_use_self_delete_path(&author, &actor_bytes, event) {
+-                // Author deleting their own message: re-gate on membership/open visibility so that
+-                // a removed private-channel member cannot mutate old messages after access is revoked.
+-                let is_member = state
+-                    .is_member_cached(tenant.community(), channel_id, &actor_bytes)
+-                    .await?;
+-                if is_member {
+-                    return Ok(());
+-                }
+-                let is_open = state
+-                    .db
+-                    .get_channel_for_event_write(tenant.community(), channel_id)
+-                    .await
+-                    .map(|ch| ch.visibility == "open")
+-                    .unwrap_or(false);
+-                if is_open {
+-                    return Ok(());
+-                }
+-                // Not a member and channel is private — fall through to owner/admin/owner-of-agent check.
+-            }
+-
+-            // Not the author, or author who is no longer a member of a private channel —
+-            // must be owner/admin or the owning human of the message's agent-author.
+-            let members = state.db.get_members(tenant.community(), channel_id).await?;
+-            if actor_is_channel_owner_or_admin(&members, &actor_bytes) {
+-                Ok(())
+-            } else {
+-                // Allow the owning human of the agent that authored the target message,
+-                // even when the human is not a channel member.
+-                if state
+-                    .db
+-                    .is_agent_owner(tenant.community(), &author, &actor_bytes)
+-                    .await?
+-                {
+-                    Ok(())
+-                } else {
+-                    Err(anyhow::anyhow!(
+-                        "must be event author or channel owner/admin"
+-                    ))
+-                }
+-            }
++            Ok(())
+         }
+         9008 => {
+             // DELETE_GROUP: owner only, or the owning human of the channel's agent-owner.
+@@ -2563,7 +2614,7 @@ fn has_e_tag(event: &Event) -> bool {
+     event.tags.iter().any(|t| t.kind().to_string() == "e")
+ }
+ 
+-fn extract_target_event_ids(event: &Event) -> Vec<Vec<u8>> {
++pub(crate) fn extract_target_event_ids(event: &Event) -> Vec<Vec<u8>> {
+     event
+         .tags
+         .iter()
+diff --git a/crates/buzz-relay/src/workflow_sink.rs b/crates/buzz-relay/src/workflow_sink.rs
+index e069d7a37dda2648a80e4bd35ae3eb8030dc539c..e757b49d80caa829bc86cfd1492c5b701187baaf 100644
+--- a/crates/buzz-relay/src/workflow_sink.rs
++++ b/crates/buzz-relay/src/workflow_sink.rs
+@@ -320,6 +320,7 @@ impl ActionSink for RelayActionSink {
+                         tenant.community(),
+                         parent_hex,
+                         channel_uuid,
++                        &author_pubkey_bytes,
+                         &state,
+                     )
+                     .await
+@@ -1401,4 +1402,124 @@ mod postgres_tests {
+             "expected InvalidInput, got {err:?}"
+         );
+     }
++
++    /// A workflow reply to a parent the owner cannot use, in another channel
++    /// or unreadable to them, fails exactly like a reply to a missing parent.
++    #[tokio::test]
++    #[ignore = "requires Postgres"]
++    async fn workflow_reply_to_unusable_parent_matches_missing() {
++        let state = test_state().await;
++        let owner = nostr::Keys::generate();
++        let owner_hex = owner.public_key().to_hex();
++        let stranger = nostr::Keys::generate();
++        let host = format!("wf-unusable-{}.example", uuid::Uuid::new_v4().simple());
++        let community = match state
++            .db
++            .create_community_with_owner(&host, &owner_hex)
++            .await
++            .expect("create community")
++        {
++            CreateCommunityWithOwnerResult::Created(rec) => rec.id,
++            other => panic!("expected fresh community, got {other:?}"),
++        };
++        let open_channel = |name: &'static str| {
++            let state = Arc::clone(&state);
++            let owner = owner.public_key().to_bytes();
++            async move {
++                state
++                    .db
++                    .create_channel(
++                        community,
++                        name,
++                        ChannelType::Stream,
++                        ChannelVisibility::Open,
++                        None,
++                        &owner,
++                        None,
++                    )
++                    .await
++                    .expect("create channel")
++            }
++        };
++        let channel = open_channel("wf-unusable").await;
++        let elsewhere = open_channel("wf-elsewhere").await;
++        let insert = |keys: &nostr::Keys, kind: u32, channel_id: Uuid, extra: Vec<Tag>| {
++            let state = Arc::clone(&state);
++            let mut tags = vec![Tag::parse(["h", &channel_id.to_string()]).expect("h tag")];
++            tags.extend(extra);
++            let event = EventBuilder::new(Kind::from(kind as u16), "parent")
++                .tags(tags)
++                .sign_with_keys(keys)
++                .expect("sign parent");
++            async move {
++                state
++                    .db
++                    .insert_event(community, &event, Some(channel_id))
++                    .await
++                    .expect("insert parent");
++                event.id.to_hex()
++            }
++        };
++        // A kind 5 whose `k` tag names an author-only kind is readable only by
++        // its author. Production ingest never stores one channel-scoped (its
++        // target is global), so this is the closest state that isolates the
++        // resolver's visibility check and the reader identity it is given.
++        let author_only_deletion = |keys: &nostr::Keys| {
++            let target = nostr::Keys::generate().public_key().to_hex();
++            insert(
++                keys,
++                buzz_core::kind::KIND_DELETION,
++                channel.id,
++                vec![
++                    Tag::parse(["e", &target]).expect("e tag"),
++                    Tag::parse(["k", "30300"]).expect("k tag"),
++                ],
++            )
++        };
++        let other_channel = insert(&owner, KIND_STREAM_MESSAGE, elsewhere.id, vec![]).await;
++        let unreadable = author_only_deletion(&stranger).await;
++        let owner_only = author_only_deletion(&owner).await;
++
++        let sink = RelayActionSink::new(&state);
++        let reply = |author_hex: String, parent: String| {
++            let sink = &sink;
++            let channel = channel.id.to_string();
++            async move {
++                sink.send_message(
++                    community,
++                    &channel,
++                    "reply",
++                    "reply",
++                    &author_hex,
++                    Some(&parent),
++                )
++                .await
++            }
++        };
++        let missing = nostr::Keys::generate().public_key().to_hex();
++        let other_owner_hex = nostr::Keys::generate().public_key().to_hex();
++        for (case, author, parent) in [
++            ("missing", &owner_hex, missing),
++            ("other channel", &owner_hex, other_channel),
++            ("unreadable", &owner_hex, unreadable),
++            (
++                "readable only by another owner",
++                &other_owner_hex,
++                owner_only.clone(),
++            ),
++        ] {
++            match reply(author.clone(), parent).await {
++                Err(ActionSinkError::InvalidInput(msg)) => {
++                    assert_eq!(msg, "reply parent not found", "{case}")
++                }
++                other => panic!("{case}: expected the missing-parent error, got {other:?}"),
++            }
++        }
++
++        // Positive control: the resolver reads as the workflow owner, who
++        // alone can see their author-only parent.
++        reply(owner_hex.clone(), owner_only)
++            .await
++            .expect("owner replies to a parent only they can read");
++    }
+ }
+diff --git a/crates/buzz-test-client/tests/e2e_author_only_deletion.rs b/crates/buzz-test-client/tests/e2e_author_only_deletion.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..e820aabd13580c180c6336fe23573ba197cb9879
+--- /dev/null
++++ b/crates/buzz-test-client/tests/e2e_author_only_deletion.rs
+@@ -0,0 +1,1128 @@
++//! End-to-end tests: NIP-09 deletion requests (kind:5) for author-only kinds
++//! are exactly as private as the events they delete.
++//!
++//! A deletion request names its target ids and reveals when they were
++//! deleted. For a kind in `AUTHOR_ONLY_KINDS` (here the NIP-ER reminder,
++//! kind:30300) the relay must hide that deletion from everyone but its author
++//! on every read surface, and must reject one that omits the matching `k` tag.
++//! A deletion from anyone without authority over its target is rejected
++//! before any of that, with one message whether the target is missing, live,
++//! soft-deleted, or in any channel, so the rejection reveals nothing about it.
++//!
++//! # Running
++//!
++//! Start the relay, then run:
++//!
++//! ```text
++//! RELAY_URL=ws://localhost:3001 cargo test -p buzz-test-client --test e2e_author_only_deletion -- --ignored
++//! ```
++//!
++//! On a database built from the desired-state schema (`schema/schema.sql`),
++//! which indexes kind:5 content, also set `BUZZ_TEST_SEARCH_INDEXES_DELETIONS=1`.
++//! Without it, the search test only checks that results stay within the
++//! permitted sets, not that search actually returns them.
++
++use std::collections::BTreeSet;
++use std::time::Duration;
++
++use buzz_test_client::{BuzzTestClient, RelayMessage, TestClientError};
++use nostr::{EventBuilder, EventId, Filter, Keys, Kind, Tag};
++use reqwest::Client;
++use serde_json::Value;
++
++const KIND_EVENT_REMINDER: u16 = 30300;
++
++fn relay_url() -> String {
++    std::env::var("RELAY_URL").unwrap_or_else(|_| "ws://localhost:3001".to_string())
++}
++
++fn relay_http_url() -> String {
++    relay_url()
++        .replace("wss://", "https://")
++        .replace("ws://", "http://")
++        .trim_end_matches('/')
++        .to_string()
++}
++
++fn sub_id(name: &str) -> String {
++    format!("e2e-aod-{name}-{}", uuid::Uuid::new_v4())
++}
++
++fn http_client() -> Client {
++    Client::builder()
++        .timeout(Duration::from_secs(10))
++        .build()
++        .expect("failed to build HTTP client")
++}
++
++fn tag(parts: &[&str]) -> Tag {
++    Tag::parse(parts.to_vec()).expect("valid tag")
++}
++
++fn build_reminder(keys: &Keys) -> nostr::Event {
++    EventBuilder::new(
++        Kind::Custom(KIND_EVENT_REMINDER),
++        "nip44-ciphertext-placeholder",
++    )
++    .tags(vec![
++        tag(&["d", &uuid::Uuid::new_v4().to_string()]),
++        tag(&["alt", "Encrypted reminder"]),
++    ])
++    .sign_with_keys(keys)
++    .unwrap()
++}
++
++fn build_deletion(keys: &Keys, tags: Vec<Tag>) -> nostr::Event {
++    build_deletion_with_reason(keys, tags, "")
++}
++
++fn build_deletion_with_reason(keys: &Keys, tags: Vec<Tag>, reason: &str) -> nostr::Event {
++    EventBuilder::new(Kind::EventDeletion, reason)
++        .tags(tags)
++        .sign_with_keys(keys)
++        .unwrap()
++}
++
++async fn submit(client: &Client, keys: &Keys, event: &nostr::Event) -> (bool, String) {
++    let resp = client
++        .post(format!("{}/events", relay_http_url()))
++        .header("X-Pubkey", keys.public_key().to_hex())
++        .json(event)
++        .send()
++        .await
++        .expect("submit event");
++    let ok = resp.status().is_success();
++    let body: Value = resp.json().await.expect("parse response");
++    if ok {
++        (
++            body["accepted"].as_bool().unwrap_or(false),
++            body["message"].as_str().unwrap_or("").to_string(),
++        )
++    } else {
++        (false, body["error"].as_str().unwrap_or("").to_string())
++    }
++}
++
++async fn submit_ok(client: &Client, keys: &Keys, event: &nostr::Event) {
++    let (accepted, msg) = submit(client, keys, event).await;
++    assert!(accepted, "setup event rejected: {msg}");
++}
++
++/// Store a reminder as `author`, then delete it with a `k`-tagged kind:5
++/// whose reason is a unique search term. Returns the reminder and deletion.
++async fn store_deleted_reminder(client: &Client, author: &Keys) -> (nostr::Event, nostr::Event) {
++    let reminder = build_reminder(author);
++    submit_ok(client, author, &reminder).await;
++    let deletion = build_deletion_with_reason(
++        author,
++        vec![
++            tag(&["e", &reminder.id.to_hex()]),
++            tag(&["k", &KIND_EVENT_REMINDER.to_string()]),
++        ],
++        &search_term(author),
++    );
++    submit_ok(client, author, &deletion).await;
++    let reminder_reads = http_query_ids(client, author, &Filter::new().id(reminder.id)).await;
++    assert!(reminder_reads.is_empty(), "the reminder must be deleted");
++    (reminder, deletion)
++}
++
++/// A search term unique to `author`'s deletion reason.
++fn search_term(author: &Keys) -> String {
++    format!("aodreason{}", &author.public_key().to_hex()[..16])
++}
++
++/// Filters that each match only the deletion `store_deleted_reminder` left:
++/// by kind, mixed kinds, and id. The id filter is the kindless COUNT case;
++/// broader kindless filters can match `#p`-gated kinds, so the relay closes
++/// them before any read runs.
++fn deletion_filters(author: &Keys, deletion: EventId) -> Vec<Filter> {
++    vec![
++        Filter::new()
++            .kind(Kind::EventDeletion)
++            .author(author.public_key()),
++        Filter::new()
++            .kinds([Kind::EventDeletion, Kind::TextNote])
++            .author(author.public_key()),
++        Filter::new().id(deletion),
++    ]
++}
++
++async fn http_query_ids(client: &Client, reader: &Keys, filter: &Filter) -> Vec<String> {
++    let resp = client
++        .post(format!("{}/query", relay_http_url()))
++        .header("X-Pubkey", reader.public_key().to_hex())
++        .json(&vec![filter])
++        .send()
++        .await
++        .expect("query events");
++    assert!(
++        resp.status().is_success(),
++        "query failed: {}",
++        resp.status()
++    );
++    resp.json::<Vec<Value>>()
++        .await
++        .expect("parse query response")
++        .iter()
++        .filter_map(|e| e["id"].as_str().map(str::to_string))
++        .collect()
++}
++
++async fn http_count(client: &Client, reader: &Keys, filter: &Filter) -> u64 {
++    let resp = client
++        .post(format!("{}/count", relay_http_url()))
++        .header("X-Pubkey", reader.public_key().to_hex())
++        .json(&vec![filter])
++        .send()
++        .await
++        .expect("count events");
++    assert!(
++        resp.status().is_success(),
++        "count failed: {}",
++        resp.status()
++    );
++    let body: Value = resp.json().await.expect("parse count response");
++    body["count"].as_u64().expect("count field")
++}
++
++async fn ws_query_ids(ws: &mut BuzzTestClient, filter: &Filter) -> Vec<EventId> {
++    let sid = sub_id("req");
++    ws.subscribe(&sid, vec![filter.clone()]).await.expect("REQ");
++    let events = ws
++        .collect_until_eose(&sid, Duration::from_secs(5))
++        .await
++        .expect("EOSE");
++    ws.close_subscription(&sid).await.expect("CLOSE");
++    events.into_iter().map(|e| e.id).collect()
++}
++
++async fn ws_count(ws: &mut BuzzTestClient, filter: &Filter) -> u64 {
++    let sid = sub_id("count");
++    ws.send_raw(&serde_json::json!(["COUNT", sid, filter]))
++        .await
++        .expect("COUNT");
++    loop {
++        match ws
++            .recv_event(Duration::from_secs(5))
++            .await
++            .expect("COUNT reply")
++        {
++            RelayMessage::Count {
++                subscription_id,
++                count,
++            } if subscription_id == sid => return count,
++            RelayMessage::Closed {
++                subscription_id,
++                message,
++            } if subscription_id == sid => panic!("COUNT closed: {message}"),
++            _ => {}
++        }
++    }
++}
++
++/// Every historical read surface returns the deletion to `reader` iff
++/// `visible`: WS REQ, WS COUNT, HTTP `/query` and HTTP `/count`, by author
++/// and by id.
++async fn assert_deletion_visibility(
++    reader: &Keys,
++    author: &Keys,
++    deletion: EventId,
++    visible: bool,
++) {
++    let client = http_client();
++    let mut ws = BuzzTestClient::connect(&relay_url(), reader)
++        .await
++        .expect("connect reader");
++    let expected = u64::from(visible);
++    let mut mismatches = Vec::new();
++    for filter in deletion_filters(author, deletion) {
++        let observed = [
++            ("WS REQ", ws_query_ids(&mut ws, &filter).await.len() as u64),
++            ("WS COUNT", ws_count(&mut ws, &filter).await),
++            (
++                "HTTP /query",
++                http_query_ids(&client, reader, &filter).await.len() as u64,
++            ),
++            ("HTTP /count", http_count(&client, reader, &filter).await),
++        ];
++        for (surface, n) in observed {
++            if n != expected {
++                mismatches.push(format!("{surface} {filter:?}: {n}, expected {expected}"));
++            }
++        }
++    }
++    assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
++    ws.disconnect().await.expect("disconnect");
++}
++
++/// Whether the relay's `search_tsv` indexes kind:5 content. The desired
++/// schema (`schema/schema.sql`, which CI applies) does; an empty database
++/// initialized through migration 0008 gets a positive allowlist that doesn't.
++fn search_indexes_deletions() -> bool {
++    std::env::var("BUZZ_TEST_SEARCH_INDEXES_DELETIONS").is_ok_and(|v| v == "1")
++}
++
++/// Search results for `filter` over WS REQ and HTTP `/query`, as hex ids.
++async fn search_ids(reader: &Keys, filter: &Filter) -> [(&'static str, BTreeSet<String>); 2] {
++    let mut ws = BuzzTestClient::connect(&relay_url(), reader)
++        .await
++        .expect("connect reader");
++    let ws_ids = ws_query_ids(&mut ws, filter)
++        .await
++        .iter()
++        .map(EventId::to_hex)
++        .collect();
++    ws.disconnect().await.expect("disconnect");
++    let http_ids = http_query_ids(&http_client(), reader, filter)
++        .await
++        .into_iter()
++        .collect();
++    [("WS REQ search", ws_ids), ("HTTP /query search", http_ids)]
++}
++
++#[tokio::test]
++#[ignore]
++async fn author_only_deletion_search_reaches_only_author() {
++    let client = http_client();
++    let author = Keys::generate();
++    let (_, private) = store_deleted_reminder(&client, &author).await;
++    // Public control: an ordinary deletion carrying the same reason word.
++    let note = EventBuilder::text_note("public note")
++        .sign_with_keys(&author)
++        .unwrap();
++    submit_ok(&client, &author, &note).await;
++    let public = build_deletion_with_reason(
++        &author,
++        vec![tag(&["e", &note.id.to_hex()]), tag(&["k", "1"])],
++        &search_term(&author),
++    );
++    submit_ok(&client, &author, &public).await;
++
++    let search = Filter::new()
++        .kind(Kind::EventDeletion)
++        .search(search_term(&author));
++    let (private, public) = (private.id.to_hex(), public.id.to_hex());
++    let strict = search_indexes_deletions();
++    let mut mismatches = Vec::new();
++    for (reader, name, allowed) in [
++        (
++            &author,
++            "author",
++            BTreeSet::from([private.clone(), public.clone()]),
++        ),
++        (&Keys::generate(), "other", BTreeSet::from([public.clone()])),
++    ] {
++        for (surface, ids) in search_ids(reader, &search).await {
++            let ok = if strict {
++                ids == allowed
++            } else {
++                ids.is_subset(&allowed)
++            };
++            if !ok {
++                mismatches.push(format!(
++                    "{surface} as {name}: {ids:?}, expected {allowed:?} (strict={strict})"
++                ));
++            }
++        }
++    }
++    assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
++}
++
++#[tokio::test]
++#[ignore]
++async fn author_only_deletion_hidden_from_other_readers() {
++    let client = http_client();
++    let author = Keys::generate();
++    let (_, deletion) = store_deleted_reminder(&client, &author).await;
++    assert_deletion_visibility(&Keys::generate(), &author, deletion.id, false).await;
++}
++
++#[tokio::test]
++#[ignore]
++async fn author_only_deletion_visible_to_author() {
++    let client = http_client();
++    let author = Keys::generate();
++    let (_, deletion) = store_deleted_reminder(&client, &author).await;
++    assert_deletion_visibility(&author, &author, deletion.id, true).await;
++}
++
++#[tokio::test]
++#[ignore]
++async fn author_only_deletion_live_fanout_reaches_only_author() {
++    let client = http_client();
++    let author = Keys::generate();
++    let reminder = build_reminder(&author);
++    submit_ok(&client, &author, &reminder).await;
++
++    let live = Filter::new()
++        .kind(Kind::EventDeletion)
++        .author(author.public_key());
++    let mut subscribers = Vec::new();
++    for keys in [author.clone(), Keys::generate()] {
++        let mut ws = BuzzTestClient::connect(&relay_url(), &keys)
++            .await
++            .expect("connect");
++        let sid = sub_id("live");
++        ws.subscribe(&sid, vec![live.clone()]).await.expect("REQ");
++        assert!(ws
++            .collect_until_eose(&sid, Duration::from_secs(5))
++            .await
++            .expect("EOSE")
++            .is_empty());
++        subscribers.push((ws, sid));
++    }
++
++    let deletion = build_deletion(
++        &author,
++        vec![
++            tag(&["e", &reminder.id.to_hex()]),
++            tag(&["k", &KIND_EVENT_REMINDER.to_string()]),
++        ],
++    );
++    submit_ok(&client, &author, &deletion).await;
++
++    for (i, (mut ws, sid)) in subscribers.into_iter().enumerate() {
++        let delivered = live_event_ids(&mut ws, &sid).await.contains(&deletion.id);
++        let is_author = i == 0;
++        assert_eq!(delivered, is_author, "live delivery to subscriber {i}");
++        ws.disconnect().await.expect("disconnect");
++    }
++}
++
++#[tokio::test]
++#[ignore]
++async fn deletion_of_author_only_event_requires_matching_k_tag() {
++    let client = http_client();
++    let author = Keys::generate();
++    let reminder = build_reminder(&author);
++    submit_ok(&client, &author, &reminder).await;
++    let target = tag(&["e", &reminder.id.to_hex()]);
++    let coordinate = format!(
++        "{KIND_EVENT_REMINDER}:{}:{}",
++        author.public_key().to_hex(),
++        reminder.tags.identifier().expect("d tag")
++    );
++    let coordinate = tag(&["a", &coordinate]);
++
++    for tags in [
++        vec![target.clone()],
++        vec![target.clone(), tag(&["k", "1"])],
++        vec![coordinate.clone()],
++    ] {
++        let (accepted, msg) =
++            submit(&client, &author, &build_deletion(&author, tags.clone())).await;
++        assert!(
++            !accepted,
++            "deletion {tags:?} must be rejected without k=30300 (got: {msg})"
++        );
++    }
++    submit_ok(
++        &client,
++        &author,
++        &build_deletion(
++            &author,
++            vec![coordinate, tag(&["k", &KIND_EVENT_REMINDER.to_string()])],
++        ),
++    )
++    .await;
++}
++
++#[tokio::test]
++#[ignore]
++async fn untagged_deletion_of_soft_deleted_author_only_event_rejected() {
++    let client = http_client();
++    let author = Keys::generate();
++    let (reminder, _) = store_deleted_reminder(&client, &author).await;
++    let untagged = build_deletion(&author, vec![tag(&["e", &reminder.id.to_hex()])]);
++    let (accepted, msg) = submit(&client, &author, &untagged).await;
++    assert!(
++        !accepted,
++        "an untagged deletion of a soft-deleted reminder must be rejected (got: {msg})"
++    );
++}
++
++#[tokio::test]
++#[ignore]
++async fn non_canonical_k_tag_is_not_a_private_marker() {
++    let client = http_client();
++    let author = Keys::generate();
++    let reminder = build_reminder(&author);
++    submit_ok(&client, &author, &reminder).await;
++    for k in ["030300", "+30300"] {
++        let deletion = build_deletion(
++            &author,
++            vec![tag(&["e", &reminder.id.to_hex()]), tag(&["k", k])],
++        );
++        let (accepted, msg) = submit(&client, &author, &deletion).await;
++        assert!(
++            !accepted,
++            "k={k} must not satisfy the k=30300 rule (got: {msg})"
++        );
++    }
++}
++
++#[tokio::test]
++#[ignore]
++async fn public_deletion_cannot_claim_author_only_kind() {
++    let client = http_client();
++    let author = Keys::generate();
++    let note = EventBuilder::text_note("public note")
++        .sign_with_keys(&author)
++        .unwrap();
++    submit_ok(&client, &author, &note).await;
++    let deletion = build_deletion(
++        &author,
++        vec![
++            tag(&["e", &note.id.to_hex()]),
++            tag(&["k", &KIND_EVENT_REMINDER.to_string()]),
++        ],
++    );
++    let (accepted, msg) = submit(&client, &author, &deletion).await;
++    assert!(
++        !accepted,
++        "a public deletion must not hide behind k=30300 (got: {msg})"
++    );
++}
++
++/// The one rejection a sender without authority over a deletion target gets,
++/// whether the target exists, is soft-deleted, or lives in any channel.
++const DENIED: &str = "invalid: deletion target not found or not deletable by you";
++
++/// Submit `deletion` as `sender` over HTTP and WS and return how each
++/// rejected it: the HTTP status and error, and the WS `OK` message.
++async fn rejection(
++    client: &Client,
++    sender: &Keys,
++    deletion: nostr::Event,
++) -> (u16, String, String) {
++    let resp = client
++        .post(format!("{}/events", relay_http_url()))
++        .header("X-Pubkey", sender.public_key().to_hex())
++        .json(&deletion)
++        .send()
++        .await
++        .expect("submit event");
++    let status = resp.status().as_u16();
++    let body: Value = resp.json().await.expect("parse response");
++    let http_msg = body["error"].as_str().unwrap_or("").to_string();
++    let mut ws = BuzzTestClient::connect(&relay_url(), sender)
++        .await
++        .expect("connect");
++    let ok = ws.send_event(deletion).await.expect("OK");
++    ws.disconnect().await.expect("disconnect");
++    assert!(!ok.accepted, "WS must reject the deletion");
++    (status, http_msg, ok.message)
++}
++
++/// Submit `deletion` as `sender` over HTTP and WS; both must give the
++/// generic denial, which cannot reveal the target's kind.
++async fn assert_rejected_as_non_author(client: &Client, sender: &Keys, deletion: nostr::Event) {
++    let (status, http_msg, ws_msg) = rejection(client, sender, deletion).await;
++    assert!(status >= 400, "HTTP must reject the deletion");
++    for msg in [http_msg, ws_msg] {
++        assert_eq!(msg, DENIED);
++    }
++}
++
++async fn create_channel(client: &Client, owner: &Keys, visibility: &str) -> String {
++    let id = uuid::Uuid::new_v4().to_string();
++    let event = EventBuilder::new(Kind::Custom(9007), "")
++        .tags(vec![
++            tag(&["h", &id]),
++            tag(&["name", &format!("aod-{id}")]),
++            tag(&["channel_type", "stream"]),
++            tag(&["visibility", visibility]),
++        ])
++        .sign_with_keys(owner)
++        .unwrap();
++    submit_ok(client, owner, &event).await;
++    id
++}
++
++async fn post_message(client: &Client, author: &Keys, channel: &str) -> nostr::Event {
++    let message = EventBuilder::new(Kind::Custom(9), uuid::Uuid::new_v4().to_string())
++        .tags(vec![tag(&["h", channel])])
++        .sign_with_keys(author)
++        .unwrap();
++    submit_ok(client, author, &message).await;
++    message
++}
++
++/// A sender without authority over a deletion target gets one rejection,
++/// identical in HTTP status, HTTP error and WS `OK` message, for kind 5 and
++/// kind 9005 alike, whether the target is missing, live, soft-deleted, in a
++/// private channel the sender has not joined, or in another channel.
++#[tokio::test]
++#[ignore]
++async fn unauthorized_deletion_does_not_reveal_target_existence() {
++    let client = http_client();
++    let author = Keys::generate();
++    let other = Keys::generate();
++    let open = create_channel(&client, &author, "open").await;
++    let private = create_channel(&client, &author, "private").await;
++    // A channel `other` owns, so 9005 there passes as owner/admin authority.
++    let others = create_channel(&client, &other, "open").await;
++    let live = post_message(&client, &author, &open).await;
++    let deleted = post_message(&client, &author, &open).await;
++    submit_ok(
++        &client,
++        &author,
++        &build_deletion(&author, vec![tag(&["e", &deleted.id.to_hex()])]),
++    )
++    .await;
++    let hidden = post_message(&client, &author, &private).await;
++    let reminder = build_reminder(&author);
++    submit_ok(&client, &author, &reminder).await;
++    let missing = "a".repeat(64);
++
++    assert_ne!(live.id, deleted.id);
++    let delete = |target: &str| build_deletion(&other, vec![tag(&["e", target])]);
++    let redact = |target: &str, channel: &str| {
++        EventBuilder::new(Kind::Custom(9005), "")
++            .tags(vec![tag(&["e", target]), tag(&["h", channel])])
++            .sign_with_keys(&other)
++            .unwrap()
++    };
++    let cases = [
++        ("kind 5, missing", delete(&missing)),
++        ("kind 5, live", delete(&live.id.to_hex())),
++        ("kind 5, soft-deleted", delete(&deleted.id.to_hex())),
++        ("kind 5, private channel", delete(&hidden.id.to_hex())),
++        ("kind 5, global reminder", delete(&reminder.id.to_hex())),
++        ("9005, missing", redact(&missing, &others)),
++        ("9005, live", redact(&live.id.to_hex(), &open)),
++        ("9005, soft-deleted", redact(&deleted.id.to_hex(), &open)),
++        (
++            "9005, private channel",
++            redact(&hidden.id.to_hex(), &private),
++        ),
++        ("9005, other channel", redact(&live.id.to_hex(), &others)),
++        ("9005, no channel", redact(&reminder.id.to_hex(), &others)),
++    ];
++    let mut expected = None;
++    for (case, deletion) in cases {
++        let (status, http_msg, ws_msg) = rejection(&client, &other, deletion).await;
++        assert_eq!(http_msg, DENIED, "{case}: HTTP");
++        assert_eq!(ws_msg, DENIED, "{case}: WS");
++        assert_eq!(
++            *expected.get_or_insert(status),
++            status,
++            "{case}: HTTP status"
++        );
++    }
++}
++
++#[tokio::test]
++#[ignore]
++async fn non_author_deletion_does_not_reveal_target_kind() {
++    let client = http_client();
++    let author = Keys::generate();
++    let other = Keys::generate();
++    let live = build_reminder(&author);
++    submit_ok(&client, &author, &live).await;
++    let (deleted, _) = store_deleted_reminder(&client, &author).await;
++
++    for target in [&live, &deleted] {
++        for k in [None, Some("30350"), Some("30300")] {
++            let mut tags = vec![tag(&["e", &target.id.to_hex()])];
++            tags.extend(k.map(|k| tag(&["k", k])));
++            assert_rejected_as_non_author(&client, &other, build_deletion(&other, tags)).await;
++        }
++    }
++}
++
++/// An author removed from a private channel can no longer delete their
++/// messages there, so kind 5 and kind 9005 (sent from a channel they still
++/// write to) must reject exactly as for a missing target, while the channel
++/// owner and the author's own still-writable messages keep working.
++#[tokio::test]
++#[ignore]
++async fn removed_author_deletion_does_not_reveal_target() {
++    let client = http_client();
++    let owner = Keys::generate();
++    let author = Keys::generate();
++    let private = create_channel(&client, &owner, "private").await;
++    let own = create_channel(&client, &author, "open").await;
++    let membership = |kind: u16| {
++        EventBuilder::new(Kind::Custom(kind), "")
++            .tags(vec![
++                tag(&["h", &private]),
++                tag(&["p", &author.public_key().to_hex()]),
++            ])
++            .sign_with_keys(&owner)
++            .unwrap()
++    };
++    submit_ok(&client, &owner, &membership(9000)).await;
++    let retained = post_message(&client, &author, &private).await;
++    let moderated = post_message(&client, &author, &private).await;
++    submit_ok(&client, &owner, &membership(9001)).await;
++    let missing = "a".repeat(64);
++
++    let delete = |target: &str| build_deletion(&author, vec![tag(&["e", target])]);
++    let redact = |keys: &Keys, target: &str, channel: &str| {
++        EventBuilder::new(Kind::Custom(9005), "")
++            .tags(vec![tag(&["e", target]), tag(&["h", channel])])
++            .sign_with_keys(keys)
++            .unwrap()
++    };
++    let cases = [
++        ("kind 5, missing", delete(&missing)),
++        ("kind 5, retained", delete(&retained.id.to_hex())),
++        ("9005, missing", redact(&author, &missing, &own)),
++        (
++            "9005, retained",
++            redact(&author, &retained.id.to_hex(), &own),
++        ),
++    ];
++    let mut expected = None;
++    for (case, deletion) in cases {
++        let (status, http_msg, ws_msg) = rejection(&client, &author, deletion).await;
++        assert_eq!(http_msg, DENIED, "{case}: HTTP");
++        assert_eq!(ws_msg, DENIED, "{case}: WS");
++        assert_eq!(
++            *expected.get_or_insert(status),
++            status,
++            "{case}: HTTP status"
++        );
++    }
++
++    submit_ok(
++        &client,
++        &owner,
++        &redact(&owner, &moderated.id.to_hex(), &private),
++    )
++    .await;
++    let still_writable = post_message(&client, &author, &own).await;
++    submit_ok(&client, &author, &delete(&still_writable.id.to_hex())).await;
++}
++
++/// An NIP-AR artifact revision by `author` homed in `channel`.
++fn artifact_revision(
++    author: &Keys,
++    artifact: &str,
++    channel: &str,
++    op: &str,
++    prev: Option<&EventId>,
++) -> nostr::Event {
++    let mut tags = vec![
++        tag(&["ar", "1"]),
++        tag(&["d", artifact]),
++        tag(&["h", channel]),
++        tag(&["type", "buzz.task"]),
++        tag(&["op", op]),
++        tag(&["title", "Task"]),
++    ];
++    tags.extend(prev.map(|p| tag(&["prev", &p.to_hex()])));
++    EventBuilder::new(Kind::Custom(45010), "")
++        .tags(tags)
++        .sign_with_keys(author)
++        .unwrap()
++}
++
++/// A live artifact by `author` homed in `channel`.
++async fn post_artifact(client: &Client, author: &Keys, channel: &str) -> nostr::Event {
++    let create = artifact_revision(
++        author,
++        &uuid::Uuid::new_v4().to_string(),
++        channel,
++        "create",
++        None,
++    );
++    submit_ok(client, author, &create).await;
++    create
++}
++
++/// An archived channel blocks every deletion of its events, so kind 5 and
++/// kind 9005 must reject as for a missing target before any error about the
++/// target's kind or location, even for the author who owns the channel.
++#[tokio::test]
++#[ignore]
++async fn archived_target_deletion_does_not_reveal_target() {
++    let client = http_client();
++    let owner = Keys::generate();
++    let archived = create_channel(&client, &owner, "open").await;
++    let active = create_channel(&client, &owner, "open").await;
++    let message = post_message(&client, &owner, &archived).await;
++    let artifact = post_artifact(&client, &owner, &archived).await;
++    // Moving an artifact out of a channel leaves a removal marker there.
++    let moved = post_artifact(&client, &owner, &archived).await;
++    let d = moved.tags.identifier().unwrap().to_string();
++    submit_ok(
++        &client,
++        &owner,
++        &artifact_revision(&owner, &d, &active, "move", Some(&moved.id)),
++    )
++    .await;
++    let marker = http_query_ids(
++        &client,
++        &owner,
++        &Filter::new().kind(Kind::Custom(45011)).custom_tag(
++            nostr::SingleLetterTag::lowercase(nostr::Alphabet::H),
++            archived.clone(),
++        ),
++    )
++    .await
++    .pop()
++    .expect("artifact removal marker");
++    let archive = EventBuilder::new(Kind::Custom(9002), "")
++        .tags(vec![tag(&["h", &archived]), tag(&["archived", "true"])])
++        .sign_with_keys(&owner)
++        .unwrap();
++    submit_ok(&client, &owner, &archive).await;
++    let missing = "a".repeat(64);
++
++    let delete = |target: &str, k: Option<&str>| {
++        let mut tags = vec![tag(&["e", target])];
++        tags.extend(k.map(|k| tag(&["k", k])));
++        build_deletion(&owner, tags)
++    };
++    let redact = |target: &str, channel: &str| {
++        EventBuilder::new(Kind::Custom(9005), "")
++            .tags(vec![tag(&["e", target]), tag(&["h", channel])])
++            .sign_with_keys(&owner)
++            .unwrap()
++    };
++    let message_id = message.id.to_hex();
++    let cases = [
++        ("kind 5, missing", delete(&missing, None)),
++        ("kind 5, message", delete(&message_id, None)),
++        ("kind 5, wrong k", delete(&message_id, Some("30300"))),
++        ("kind 5, artifact", delete(&artifact.id.to_hex(), None)),
++        ("9005, missing", redact(&missing, &active)),
++        ("9005, archived target", redact(&message_id, &active)),
++    ];
++    let mut expected = None;
++    for (case, deletion) in cases {
++        let (status, http_msg, ws_msg) = rejection(&client, &owner, deletion).await;
++        assert_eq!(http_msg, DENIED, "{case}: HTTP");
++        assert_eq!(ws_msg, DENIED, "{case}: WS");
++        assert_eq!(
++            *expected.get_or_insert(status),
++            status,
++            "{case}: HTTP status"
++        );
++    }
++    // A 9005 naming the archived channel is refused for that channel before
++    // the target is read, so the removal marker matches a missing target.
++    assert_eq!(
++        rejection(&client, &owner, redact(&marker, &archived)).await,
++        rejection(&client, &owner, redact(&missing, &archived)).await,
++    );
++
++    // In an active channel the owner still gets the target diagnostics.
++    let live = post_message(&client, &owner, &active).await;
++    let (_, http_msg, _) =
++        rejection(&client, &owner, delete(&live.id.to_hex(), Some("30300"))).await;
++    assert!(
++        http_msg.contains("does not match the deletion target's kind"),
++        "{http_msg}"
++    );
++    let live_artifact = post_artifact(&client, &owner, &active).await;
++    let (_, http_msg, _) =
++        rejection(&client, &owner, delete(&live_artifact.id.to_hex(), None)).await;
++    assert!(
++        http_msg.contains("artifacts cannot be deleted with kind 5"),
++        "{http_msg}"
++    );
++}
++
++/// Whether `reader`'s open subscription `sid` receives any event within 2s.
++async fn receives_any(ws: &mut BuzzTestClient, sid: &str) -> bool {
++    !live_event_ids(ws, sid).await.is_empty()
++}
++
++/// IDs of the events subscription `sid` receives until 2s pass with no
++/// message. A dropped connection or a `CLOSED` for `sid` fails the test, so
++/// a dead subscription can never pass for one that saw nothing.
++async fn live_event_ids(ws: &mut BuzzTestClient, sid: &str) -> Vec<EventId> {
++    let mut ids = Vec::new();
++    loop {
++        match ws.recv_event(Duration::from_secs(2)).await {
++            Ok(RelayMessage::Event {
++                subscription_id,
++                event,
++            }) if subscription_id == sid => ids.push(event.id),
++            Ok(RelayMessage::Closed {
++                subscription_id,
++                message,
++            }) if subscription_id == sid => panic!("{sid} closed: {message}"),
++            Ok(_) => {}
++            Err(TestClientError::Timeout) => return ids,
++            Err(e) => panic!("{sid} receive failed: {e}"),
++        }
++    }
++}
++
++/// Deleting a private deletion would store a public event naming it, so the
++/// author is refused (NIP-09 gives such a deletion no effect), everyone else
++/// gets the shared denial, and no reader but the author ever sees either.
++#[tokio::test]
++#[ignore]
++async fn deletion_of_private_deletion_rejected() {
++    let client = http_client();
++    let author = Keys::generate();
++    let other = Keys::generate();
++    let (_, private) = store_deleted_reminder(&client, &author).await;
++    let own = create_channel(&client, &author, "open").await;
++
++    let live = Filter::new()
++        .kind(Kind::EventDeletion)
++        .author(author.public_key());
++    let mut watcher = BuzzTestClient::connect(&relay_url(), &other)
++        .await
++        .expect("connect");
++    let sid = sub_id("chain");
++    watcher.subscribe(&sid, vec![live]).await.expect("REQ");
++    assert!(watcher
++        .collect_until_eose(&sid, Duration::from_secs(5))
++        .await
++        .expect("EOSE")
++        .is_empty());
++
++    let target = private.id.to_hex();
++    for k in [None, Some("5")] {
++        let mut tags = vec![tag(&["e", &target])];
++        tags.extend(k.map(|k| tag(&["k", k])));
++        let (status, http_msg, ws_msg) =
++            rejection(&client, &author, build_deletion(&author, tags)).await;
++        assert!(status >= 400, "k={k:?}: HTTP must reject");
++        for msg in [http_msg, ws_msg] {
++            assert_eq!(
++                msg, "invalid: cannot delete a private deletion request",
++                "k={k:?}"
++            );
++        }
++    }
++    // A 9005 cannot reach the global private deletion from any channel.
++    let redact = EventBuilder::new(Kind::Custom(9005), "")
++        .tags(vec![tag(&["e", &target]), tag(&["h", &own])])
++        .sign_with_keys(&author)
++        .unwrap();
++    let (_, http_msg, ws_msg) = rejection(&client, &author, redact).await;
++    assert_eq!((http_msg.as_str(), ws_msg.as_str()), (DENIED, DENIED));
++
++    let missing = "a".repeat(64);
++    assert_eq!(
++        rejection(
++            &client,
++            &other,
++            build_deletion(&other, vec![tag(&["e", &target])])
++        )
++        .await,
++        rejection(
++            &client,
++            &other,
++            build_deletion(&other, vec![tag(&["e", &missing])])
++        )
++        .await,
++    );
++    assert_rejected_as_non_author(
++        &client,
++        &other,
++        build_deletion(&other, vec![tag(&["e", &target])]),
++    )
++    .await;
++
++    // Only the private deletion exists: the author alone reads it.
++    assert_deletion_visibility(&author, &author, private.id, true).await;
++    assert_deletion_visibility(&other, &author, private.id, false).await;
++    assert!(
++        !receives_any(&mut watcher, &sid).await,
++        "no deletion may reach another reader live"
++    );
++    watcher.disconnect().await.expect("disconnect");
++
++    // Deleting a public deletion is unchanged.
++    let note = EventBuilder::text_note("public note")
++        .sign_with_keys(&author)
++        .unwrap();
++    submit_ok(&client, &author, &note).await;
++    let public = build_deletion(&author, vec![tag(&["e", &note.id.to_hex()])]);
++    submit_ok(&client, &author, &public).await;
++    submit_ok(
++        &client,
++        &author,
++        &build_deletion(&author, vec![tag(&["e", &public.id.to_hex()])]),
++    )
++    .await;
++}
++
++/// A soft-deleted target keeps its channel: re-deleting it faces the same
++/// membership and archive gates as a live one, and an accepted re-deletion is
++/// readable by that channel's members only. Re-deletions now retain the
++/// target's stored channel, so historical access, `#h` filtering and live
++/// routing use that channel rather than treating a new re-deletion as global.
++#[tokio::test]
++#[ignore]
++async fn soft_deleted_target_keeps_its_channel() {
++    let client = http_client();
++    let owner = Keys::generate();
++    let author = Keys::generate();
++    let outsider = Keys::generate();
++    let private = create_channel(&client, &owner, "private").await;
++    let archived = create_channel(&client, &author, "open").await;
++    let membership = |kind: u16| {
++        EventBuilder::new(Kind::Custom(kind), "")
++            .tags(vec![
++                tag(&["h", &private]),
++                tag(&["p", &author.public_key().to_hex()]),
++            ])
++            .sign_with_keys(&owner)
++            .unwrap()
++    };
++    let delete =
++        |target: &nostr::Event| build_deletion(&author, vec![tag(&["e", &target.id.to_hex()])]);
++    let soft_deleted = |channel: String| {
++        let client = client.clone();
++        let author = author.clone();
++        async move {
++            let message = post_message(&client, &author, &channel).await;
++            submit_ok(&client, &author, &delete(&message)).await;
++            message
++        }
++    };
++
++    submit_ok(&client, &owner, &membership(9000)).await;
++    let redeletable = soft_deleted(private.clone()).await;
++    let redeletion = build_deletion_with_reason(
++        &author,
++        vec![tag(&["e", &redeletable.id.to_hex()])],
++        "re-deletion",
++    );
++    assert_ne!(redeletion.id, delete(&redeletable).id);
++
++    // Subscribe before the re-deletion: the member by channel, the outsider
++    // by author. A global control deletion proves the outsider's is alive.
++    let h = nostr::SingleLetterTag::lowercase(nostr::Alphabet::H);
++    let mut watchers = Vec::new();
++    for (reader, filter) in [
++        (
++            &owner,
++            Filter::new()
++                .kind(Kind::EventDeletion)
++                .custom_tag(h, private.clone()),
++        ),
++        (
++            &outsider,
++            Filter::new()
++                .kind(Kind::EventDeletion)
++                .author(author.public_key()),
++        ),
++    ] {
++        let mut ws = BuzzTestClient::connect(&relay_url(), reader)
++            .await
++            .expect("connect");
++        let sid = sub_id("redeletion");
++        ws.subscribe(&sid, vec![filter]).await.expect("REQ");
++        ws.collect_until_eose(&sid, Duration::from_secs(5))
++            .await
++            .expect("EOSE");
++        watchers.push((ws, sid));
++    }
++    let (accepted, msg) = submit(&client, &author, &redeletion).await;
++    assert!(
++        accepted && !msg.starts_with("duplicate:"),
++        "re-deletion: {msg}"
++    );
++    let note = EventBuilder::text_note("control")
++        .sign_with_keys(&author)
++        .unwrap();
++    submit_ok(&client, &author, &note).await;
++    let control = delete(&note);
++    submit_ok(&client, &author, &control).await;
++    let [member_ids, outsider_ids] = {
++        let mut out = [Vec::new(), Vec::new()];
++        for (slot, (mut ws, sid)) in out.iter_mut().zip(watchers) {
++            *slot = live_event_ids(&mut ws, &sid).await;
++            ws.disconnect().await.expect("disconnect");
++        }
++        out
++    };
++    assert_eq!(member_ids, vec![redeletion.id], "member live delivery");
++    assert_eq!(outsider_ids, vec![control.id], "outsider live delivery");
++
++    let removed = soft_deleted(private.clone()).await;
++    submit_ok(&client, &owner, &membership(9001)).await;
++    let in_archive = soft_deleted(archived.clone()).await;
++    let archive = EventBuilder::new(Kind::Custom(9002), "")
++        .tags(vec![tag(&["h", &archived]), tag(&["archived", "true"])])
++        .sign_with_keys(&author)
++        .unwrap();
++    submit_ok(&client, &author, &archive).await;
++
++    let missing = build_deletion(&author, vec![tag(&["e", &"a".repeat(64)])]);
++    let expected = rejection(&client, &author, missing).await;
++    assert_eq!(expected.1, DENIED);
++    for (case, target) in [("removed", &removed), ("archived", &in_archive)] {
++        assert_eq!(
++            rejection(&client, &author, delete(target)).await,
++            expected,
++            "{case}"
++        );
++    }
++
++    for (reader, name, visible) in [(&owner, "member", true), (&outsider, "outsider", false)] {
++        for filter in [
++            Filter::new().id(redeletion.id),
++            Filter::new()
++                .kind(Kind::EventDeletion)
++                .custom_tag(h, private.clone()),
++        ] {
++            let ids = http_query_ids(&client, reader, &filter).await;
++            assert_eq!(
++                ids.contains(&redeletion.id.to_hex()),
++                visible,
++                "{name} {filter:?}: {ids:?}"
++            );
++        }
++    }
++}
++
++/// The single-target rule depends only on the request, so a deletion naming
++/// two targets gets the same error whatever those targets are.
++#[tokio::test]
++#[ignore]
++async fn multi_target_deletion_error_ignores_targets() {
++    let client = http_client();
++    let author = Keys::generate();
++    let owner = Keys::generate();
++    let open = create_channel(&client, &author, "open").await;
++    let elsewhere = create_channel(&client, &owner, "private").await;
++    let foreign = post_message(&client, &owner, &elsewhere).await;
++    let live = post_message(&client, &author, &open).await;
++    let reminder = build_reminder(&author);
++    submit_ok(&client, &author, &reminder).await;
++    let artifact = post_artifact(&client, &author, &open).await;
++    let coordinate = format!(
++        "{KIND_EVENT_REMINDER}:{}:{}",
++        author.public_key().to_hex(),
++        reminder.tags.identifier().expect("d tag")
++    );
++    let missing = "a".repeat(64);
++    let targets = [
++        ("missing", missing.clone()),
++        ("live", live.id.to_hex()),
++        ("other channel", foreign.id.to_hex()),
++        ("private kind", reminder.id.to_hex()),
++        ("artifact", artifact.id.to_hex()),
++    ];
++    let shapes = [
++        ("two e", "(got e=2, a=0)", "e", missing.as_str()),
++        ("e plus a", "(got e=1, a=1)", "a", coordinate.as_str()),
++    ];
++    for (shape, counts, second, value) in shapes {
++        let expected = format!(
++            "invalid: deletion events must reference exactly one target via e or a tag {counts}"
++        );
++        let mut status = None;
++        for (case, target) in &targets {
++            let deletion =
++                build_deletion(&author, vec![tag(&["e", target]), tag(&[second, value])]);
++            let (code, http_msg, ws_msg) = rejection(&client, &author, deletion).await;
++            assert_eq!(http_msg, expected, "{shape}, {case}: HTTP");
++            assert_eq!(ws_msg, expected, "{shape}, {case}: WS");
++            assert_eq!(*status.get_or_insert(code), code, "{shape}, {case}: status");
++        }
++    }
++}
+diff --git a/crates/buzz-test-client/tests/e2e_existence_oracle.rs b/crates/buzz-test-client/tests/e2e_existence_oracle.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..762d6fe472412a9294da4f469cf5fce1abee96ff
+--- /dev/null
++++ b/crates/buzz-test-client/tests/e2e_existence_oracle.rs
+@@ -0,0 +1,823 @@
++//! End-to-end tests: a write that references an event, artifact or workflow
++//! the sender cannot use or read gets exactly the response it would get for
++//! an ID that does not exist.
++//!
++//! Each test sends the same write as an unauthorized sender against targets
++//! that are missing, soft-deleted, in another channel, in a private channel
++//! the sender has not joined, author-only, or of the wrong kind, over HTTP and
++//! WS, and requires one identical HTTP status, HTTP error and WS `OK`
++//! message. A positive control shows the legitimate write still succeeds.
++//!
++//! # Running
++//!
++//! Start the relay, then run:
++//!
++//! ```text
++//! RELAY_URL=ws://localhost:3001 cargo test -p buzz-test-client --test e2e_existence_oracle -- --ignored
++//! ```
++
++use std::time::Duration;
++
++use buzz_test_client::BuzzTestClient;
++use nostr::{EventBuilder, EventId, Keys, Kind, Tag};
++use reqwest::Client;
++use serde_json::Value;
++
++const KIND_EVENT_REMINDER: u16 = 30300;
++const MISSING: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
++
++fn relay_url() -> String {
++    std::env::var("RELAY_URL").unwrap_or_else(|_| "ws://localhost:3001".to_string())
++}
++
++fn relay_http_url() -> String {
++    relay_url()
++        .replace("wss://", "https://")
++        .replace("ws://", "http://")
++        .trim_end_matches('/')
++        .to_string()
++}
++
++fn http_client() -> Client {
++    Client::builder()
++        .timeout(Duration::from_secs(10))
++        .build()
++        .expect("failed to build HTTP client")
++}
++
++fn tag(parts: &[&str]) -> Tag {
++    Tag::parse(parts.to_vec()).expect("valid tag")
++}
++
++fn sign(keys: &Keys, kind: u16, content: &str, tags: Vec<Tag>) -> nostr::Event {
++    EventBuilder::new(Kind::Custom(kind), content)
++        .tags(tags)
++        .sign_with_keys(keys)
++        .unwrap()
++}
++
++async fn submit(client: &Client, keys: &Keys, event: &nostr::Event) -> (bool, String) {
++    let resp = client
++        .post(format!("{}/events", relay_http_url()))
++        .header("X-Pubkey", keys.public_key().to_hex())
++        .json(event)
++        .send()
++        .await
++        .expect("submit event");
++    let ok = resp.status().is_success();
++    let body: Value = resp.json().await.expect("parse response");
++    if ok {
++        (
++            body["accepted"].as_bool().unwrap_or(false),
++            body["message"].as_str().unwrap_or("").to_string(),
++        )
++    } else {
++        (false, body["error"].as_str().unwrap_or("").to_string())
++    }
++}
++
++async fn submit_ok(client: &Client, keys: &Keys, event: &nostr::Event) {
++    let (accepted, msg) = submit(client, keys, event).await;
++    assert!(accepted, "setup event rejected: {msg}");
++}
++
++/// Submit `event` as `sender` over HTTP and WS and return how each rejected
++/// it: the HTTP status and error, and the WS `OK` message.
++async fn rejection(client: &Client, sender: &Keys, event: nostr::Event) -> (u16, String, String) {
++    let resp = client
++        .post(format!("{}/events", relay_http_url()))
++        .header("X-Pubkey", sender.public_key().to_hex())
++        .json(&event)
++        .send()
++        .await
++        .expect("submit event");
++    let status = resp.status().as_u16();
++    let body: Value = resp.json().await.expect("parse response");
++    let http_msg = body["error"]
++        .as_str()
++        .or_else(|| body["message"].as_str())
++        .unwrap_or("")
++        .to_string();
++    let mut ws = BuzzTestClient::connect(&relay_url(), sender)
++        .await
++        .expect("connect");
++    let ok = ws.send_event(event).await.expect("OK");
++    ws.disconnect().await.expect("disconnect");
++    assert!(!ok.accepted, "WS must reject the event");
++    (status, http_msg, ok.message)
++}
++
++/// Every case must be rejected over HTTP and WS with `expected`, and with
++/// one HTTP status across all cases.
++async fn assert_uniform(
++    client: &Client,
++    sender: &Keys,
++    expected: &str,
++    cases: Vec<(&str, nostr::Event)>,
++) {
++    let mut status_seen = None;
++    let mut mismatches = Vec::new();
++    for (case, event) in cases {
++        let (status, http_msg, ws_msg) = rejection(client, sender, event).await;
++        if status < 400 && http_msg.is_empty() {
++            mismatches.push(format!("{case}: HTTP accepted"));
++        }
++        if http_msg != expected {
++            mismatches.push(format!("{case}: HTTP {http_msg:?}"));
++        }
++        if ws_msg != expected {
++            mismatches.push(format!("{case}: WS {ws_msg:?}"));
++        }
++        if *status_seen.get_or_insert(status) != status {
++            mismatches.push(format!("{case}: HTTP status {status}"));
++        }
++    }
++    assert!(
++        mismatches.is_empty(),
++        "expected {expected:?}:\n{}",
++        mismatches.join("\n")
++    );
++}
++
++async fn create_channel(client: &Client, owner: &Keys, visibility: &str) -> String {
++    let id = uuid::Uuid::new_v4().to_string();
++    let event = sign(
++        owner,
++        9007,
++        "",
++        vec![
++            tag(&["h", &id]),
++            tag(&["name", &format!("eo-{id}")]),
++            tag(&["channel_type", "stream"]),
++            tag(&["visibility", visibility]),
++        ],
++    );
++    submit_ok(client, owner, &event).await;
++    id
++}
++
++async fn add_member(client: &Client, owner: &Keys, channel: &str, member: &Keys) {
++    let event = sign(
++        owner,
++        9000,
++        "",
++        vec![
++            tag(&["h", channel]),
++            tag(&["p", &member.public_key().to_hex()]),
++        ],
++    );
++    submit_ok(client, owner, &event).await;
++}
++
++async fn post(client: &Client, author: &Keys, kind: u16, channel: &str) -> nostr::Event {
++    let event = sign(
++        author,
++        kind,
++        &uuid::Uuid::new_v4().to_string(),
++        vec![tag(&["h", channel])],
++    );
++    submit_ok(client, author, &event).await;
++    event
++}
++
++async fn delete(client: &Client, author: &Keys, target: &nostr::Event) {
++    let deletion = EventBuilder::new(Kind::EventDeletion, "")
++        .tags(vec![tag(&["e", &target.id.to_hex()])])
++        .sign_with_keys(author)
++        .unwrap();
++    submit_ok(client, author, &deletion).await;
++}
++
++/// The author's targets in every place an outsider cannot use them.
++struct Targets {
++    /// An open channel the outsider has not joined.
++    open: String,
++    live: nostr::Event,
++    deleted: nostr::Event,
++    hidden: nostr::Event,
++    reminder: nostr::Event,
++}
++
++async fn targets(client: &Client, author: &Keys, kind: u16) -> Targets {
++    let open = create_channel(client, author, "open").await;
++    let private = create_channel(client, author, "private").await;
++    let live = post(client, author, kind, &open).await;
++    let deleted = post(client, author, kind, &open).await;
++    delete(client, author, &deleted).await;
++    let hidden = post(client, author, kind, &private).await;
++    let reminder = sign(
++        author,
++        KIND_EVENT_REMINDER,
++        "nip44-ciphertext-placeholder",
++        vec![
++            tag(&["d", &uuid::Uuid::new_v4().to_string()]),
++            tag(&["alt", "Encrypted reminder"]),
++        ],
++    );
++    submit_ok(client, author, &reminder).await;
++    Targets {
++        open,
++        live,
++        deleted,
++        hidden,
++        reminder,
++    }
++}
++
++fn hex(event: &nostr::Event) -> String {
++    event.id.to_hex()
++}
++
++/// Reactions derive their channel from the target, so a target the reactor
++/// cannot use, including someone else's author-only event, is rejected as
++/// missing. Reacting to another user's author-only event used to be stored.
++#[tokio::test]
++#[ignore]
++async fn reaction_does_not_reveal_target() {
++    let client = http_client();
++    let author = Keys::generate();
++    let other = Keys::generate();
++    let t = targets(&client, &author, 9).await;
++    // A live message the reactor could read, in an archived channel they belong to.
++    let archived = create_channel(&client, &author, "open").await;
++    add_member(&client, &author, &archived, &other).await;
++    let in_archive = post(&client, &author, 9, &archived).await;
++    let archive = sign(
++        &author,
++        9002,
++        "",
++        vec![tag(&["h", &archived]), tag(&["archived", "true"])],
++    );
++    submit_ok(&client, &author, &archive).await;
++    let react = |target: &str| sign(&other, 7, "+", vec![tag(&["e", target])]);
++    assert_uniform(
++        &client,
++        &other,
++        "invalid: reaction target event not found",
++        vec![
++            ("missing", react(MISSING)),
++            ("soft-deleted", react(&hex(&t.deleted))),
++            ("private channel", react(&hex(&t.hidden))),
++            ("author-only", react(&hex(&t.reminder))),
++            ("archived channel", react(&hex(&in_archive))),
++        ],
++    )
++    .await;
++
++    // Positive controls: the author reacts to their reminder, and a member
++    // reacts in the open channel.
++    submit_ok(
++        &client,
++        &author,
++        &sign(&author, 7, "+", vec![tag(&["e", &hex(&t.reminder)])]),
++    )
++    .await;
++    add_member(&client, &author, &t.open, &other).await;
++    submit_ok(&client, &other, &react(&hex(&t.live))).await;
++}
++
++/// An edit of a target that is not the sender's, or not in the edit's
++/// channel, or unreadable, is rejected exactly like a missing target.
++#[tokio::test]
++#[ignore]
++async fn edit_does_not_reveal_target() {
++    let client = http_client();
++    let author = Keys::generate();
++    let other = Keys::generate();
++    let t = targets(&client, &author, 9).await;
++    let own = create_channel(&client, &other, "open").await;
++    add_member(&client, &other, &own, &author).await;
++    let not_yours = post(&client, &author, 9, &own).await;
++    let edit = |target: &str| {
++        sign(
++            &other,
++            40003,
++            "edited",
++            vec![tag(&["e", target]), tag(&["h", &own])],
++        )
++    };
++    assert_uniform(
++        &client,
++        &other,
++        "invalid: edit target not found or not editable by you",
++        vec![
++            ("missing", edit(MISSING)),
++            ("soft-deleted", edit(&hex(&t.deleted))),
++            ("other channel", edit(&hex(&t.live))),
++            ("private channel", edit(&hex(&t.hidden))),
++            ("no channel / author-only", edit(&hex(&t.reminder))),
++            ("not yours", edit(&hex(&not_yours))),
++        ],
++    )
++    .await;
++
++    // Positive control: the sender edits their own message.
++    let mine = post(&client, &other, 9, &own).await;
++    submit_ok(&client, &other, &edit(&hex(&mine))).await;
++}
++
++/// An author removed from a private channel cannot tell whether their old
++/// message still exists: editing it is rejected exactly like editing a
++/// missing or soft-deleted one.
++#[tokio::test]
++#[ignore]
++async fn removed_author_edit_does_not_reveal_target() {
++    let client = http_client();
++    let owner = Keys::generate();
++    let removed = Keys::generate();
++    let private = create_channel(&client, &owner, "private").await;
++    add_member(&client, &owner, &private, &removed).await;
++    let kept = post(&client, &removed, 9, &private).await;
++    let deleted = post(&client, &removed, 9, &private).await;
++    delete(&client, &removed, &deleted).await;
++    let remove = sign(
++        &owner,
++        9001,
++        "",
++        vec![
++            tag(&["h", &private]),
++            tag(&["p", &removed.public_key().to_hex()]),
++        ],
++    );
++    submit_ok(&client, &owner, &remove).await;
++    let edit = |target: &str| {
++        sign(
++            &removed,
++            40003,
++            "edited",
++            vec![tag(&["e", target]), tag(&["h", &private])],
++        )
++    };
++    assert_uniform(
++        &client,
++        &removed,
++        "invalid: edit target not found or not editable by you",
++        vec![
++            ("missing", edit(MISSING)),
++            ("soft-deleted", edit(&hex(&deleted))),
++            ("existing, author removed", edit(&hex(&kept))),
++        ],
++    )
++    .await;
++}
++
++/// A vote's channel and readability check runs before its kind check, so an
++/// unusable target never reveals its kind.
++#[tokio::test]
++#[ignore]
++async fn forum_vote_does_not_reveal_target() {
++    let client = http_client();
++    let author = Keys::generate();
++    let other = Keys::generate();
++    let t = targets(&client, &author, 45001).await;
++    let wrong_kind = post(&client, &author, 9, &t.open).await;
++    let own = create_channel(&client, &other, "open").await;
++    let vote = |target: &str| {
++        sign(
++            &other,
++            45002,
++            "+",
++            vec![tag(&["e", target]), tag(&["h", &own])],
++        )
++    };
++    assert_uniform(
++        &client,
++        &other,
++        "invalid: vote target event not found",
++        vec![
++            ("missing", vote(MISSING)),
++            ("soft-deleted", vote(&hex(&t.deleted))),
++            ("other channel", vote(&hex(&t.live))),
++            ("private channel", vote(&hex(&t.hidden))),
++            ("author-only", vote(&hex(&t.reminder))),
++            ("other channel, wrong kind", vote(&hex(&wrong_kind))),
++        ],
++    )
++    .await;
++
++    // Positive control: a vote on a forum post in the vote's channel.
++    let mine = post(&client, &other, 45001, &own).await;
++    submit_ok(&client, &other, &vote(&hex(&mine))).await;
++}
++
++/// A report on an event the reporter cannot read is rejected exactly like a
++/// report on a missing event. Such reports used to be queued.
++#[tokio::test]
++#[ignore]
++async fn report_does_not_reveal_target() {
++    let client = http_client();
++    let author = Keys::generate();
++    let other = Keys::generate();
++    let t = targets(&client, &author, 9).await;
++    let report = |target: &str| {
++        sign(
++            &other,
++            1984,
++            "",
++            vec![
++                tag(&["e", target, "spam"]),
++                tag(&["p", &author.public_key().to_hex()]),
++            ],
++        )
++    };
++    assert_uniform(
++        &client,
++        &other,
++        "invalid: report target event not found",
++        vec![
++            ("missing", report(MISSING)),
++            ("soft-deleted", report(&hex(&t.deleted))),
++            ("private channel", report(&hex(&t.hidden))),
++            ("author-only", report(&hex(&t.reminder))),
++        ],
++    )
++    .await;
++
++    // Positive controls: a readable event, and a report by pubkey.
++    submit_ok(&client, &other, &report(&hex(&t.live))).await;
++    let by_pubkey = sign(
++        &other,
++        1984,
++        "",
++        vec![tag(&["p", &author.public_key().to_hex(), "spam"])],
++    );
++    submit_ok(&client, &other, &by_pubkey).await;
++}
++
++/// A reply whose parent is outside the reply's channel or unreadable is
++/// rejected exactly like a reply to a missing parent.
++#[tokio::test]
++#[ignore]
++async fn reply_does_not_reveal_parent() {
++    let client = http_client();
++    let author = Keys::generate();
++    let other = Keys::generate();
++    let t = targets(&client, &author, 9).await;
++    let own = create_channel(&client, &other, "open").await;
++    let reply = |parent: &str| {
++        sign(
++            &other,
++            9,
++            "reply",
++            vec![tag(&["e", parent, "", "reply"]), tag(&["h", &own])],
++        )
++    };
++    let (_, expected, _) = rejection(&client, &other, reply(MISSING)).await;
++    assert!(
++        expected.contains("reply parent not found"),
++        "missing parent: {expected:?}"
++    );
++    assert_uniform(
++        &client,
++        &other,
++        &expected,
++        vec![
++            ("missing", reply(MISSING)),
++            ("soft-deleted", reply(&hex(&t.deleted))),
++            ("other channel", reply(&hex(&t.live))),
++            ("private channel", reply(&hex(&t.hidden))),
++            ("no channel / author-only", reply(&hex(&t.reminder))),
++        ],
++    )
++    .await;
++
++    // Positive control: a reply in the parent's channel.
++    let mine = post(&client, &other, 9, &own).await;
++    submit_ok(&client, &other, &reply(&hex(&mine))).await;
++}
++
++fn artifact_revision(
++    author: &Keys,
++    artifact: &str,
++    channel: &str,
++    op: &str,
++    kind_type: &str,
++    prev: Option<&EventId>,
++) -> nostr::Event {
++    let mut tags = vec![
++        tag(&["ar", "1"]),
++        tag(&["d", artifact]),
++        tag(&["h", channel]),
++        tag(&["type", kind_type]),
++        tag(&["op", op]),
++    ];
++    if op != "delete" {
++        tags.push(tag(&["title", "Task"]));
++    }
++    tags.extend(prev.map(|p| tag(&["prev", &p.to_hex()])));
++    sign(author, 45010, "", tags)
++}
++
++fn d_tag(event: &nostr::Event) -> String {
++    event
++        .tags
++        .iter()
++        .find_map(|t| {
++            let s = t.as_slice();
++            (s.first().map(String::as_str) == Some("d")).then(|| s[1].clone())
++        })
++        .expect("d tag")
++}
++
++/// Any artifact head outside a channel the sender can write answers
++/// `head unavailable`, before the revision, type and deleted checks.
++#[tokio::test]
++#[ignore]
++async fn artifact_revision_does_not_reveal_head() {
++    let client = http_client();
++    let author = Keys::generate();
++    let other = Keys::generate();
++    let open = create_channel(&client, &author, "open").await;
++    let private = create_channel(&client, &author, "private").await;
++    let own = create_channel(&client, &other, "open").await;
++    let create = |channel: &str| {
++        artifact_revision(
++            &author,
++            &uuid::Uuid::new_v4().to_string(),
++            channel,
++            "create",
++            "buzz.task",
++            None,
++        )
++    };
++    let live = create(&open);
++    submit_ok(&client, &author, &live).await;
++    let hidden = create(&private);
++    submit_ok(&client, &author, &hidden).await;
++    let gone = create(&open);
++    submit_ok(&client, &author, &gone).await;
++    let gone_delete = artifact_revision(
++        &author,
++        &d_tag(&gone),
++        &open,
++        "delete",
++        "buzz.task",
++        Some(&gone.id),
++    );
++    submit_ok(&client, &author, &gone_delete).await;
++
++    let rev = |head: &nostr::Event, channel: &str, op: &str, ty: &str, prev: &EventId| {
++        artifact_revision(&other, &d_tag(head), channel, op, ty, Some(prev))
++    };
++    let missing = artifact_revision(
++        &other,
++        &uuid::Uuid::new_v4().to_string(),
++        &own,
++        "update",
++        "buzz.task",
++        Some(&live.id),
++    );
++    assert_uniform(
++        &client,
++        &other,
++        "conflict: artifact head unavailable",
++        vec![
++            ("missing", missing),
++            (
++                "other channel, current prev",
++                rev(&live, &own, "update", "buzz.task", &live.id),
++            ),
++            (
++                "other channel, stale prev",
++                rev(&live, &own, "update", "buzz.task", &hidden.id),
++            ),
++            (
++                "other channel, wrong type",
++                rev(&live, &own, "update", "buzz.note", &live.id),
++            ),
++            (
++                "other channel, delete",
++                rev(&live, &own, "delete", "buzz.task", &live.id),
++            ),
++            (
++                "private channel, update",
++                rev(&hidden, &own, "update", "buzz.task", &hidden.id),
++            ),
++            (
++                "private channel, move",
++                rev(&hidden, &own, "move", "buzz.task", &hidden.id),
++            ),
++            (
++                "deleted, restore",
++                rev(&gone, &own, "restore", "buzz.task", &gone_delete.id),
++            ),
++            (
++                "deleted, update",
++                rev(&gone, &own, "update", "buzz.task", &gone_delete.id),
++            ),
++        ],
++    )
++    .await;
++
++    // Positive control: the sender revises an artifact in their channel.
++    let mine = artifact_revision(
++        &other,
++        &uuid::Uuid::new_v4().to_string(),
++        &own,
++        "create",
++        "buzz.task",
++        None,
++    );
++    submit_ok(&client, &other, &mine).await;
++    submit_ok(
++        &client,
++        &other,
++        &rev(&mine, &own, "update", "buzz.task", &mine.id),
++    )
++    .await;
++}
++
++/// Triggering someone else's workflow is rejected exactly like triggering a
++/// workflow that does not exist.
++#[tokio::test]
++#[ignore]
++async fn workflow_trigger_does_not_reveal_workflow() {
++    let client = http_client();
++    let author = Keys::generate();
++    let other = Keys::generate();
++    let channel = create_channel(&client, &author, "open").await;
++    add_member(&client, &author, &channel, &other).await;
++    let define = |id: &str| {
++        sign(
++            &author,
++            30620,
++            "name: existence-oracle\ntrigger:\n  on: message_posted\nsteps:\n  - id: pause\n    action: delay\n    duration: 1s\n",
++            vec![tag(&["d", id]), tag(&["h", &channel])],
++        )
++    };
++    let live = uuid::Uuid::new_v4().to_string();
++    submit_ok(&client, &author, &define(&live)).await;
++    let deleted = uuid::Uuid::new_v4().to_string();
++    submit_ok(&client, &author, &define(&deleted)).await;
++    let coordinate = format!("30620:{}:{deleted}", author.public_key().to_hex());
++    let deletion = EventBuilder::new(Kind::EventDeletion, "")
++        .tags(vec![tag(&["a", &coordinate])])
++        .sign_with_keys(&author)
++        .unwrap();
++    submit_ok(&client, &author, &deletion).await;
++
++    let trigger = |keys: &Keys, id: &str| sign(keys, 46020, "{}", vec![tag(&["d", id])]);
++    assert_uniform(
++        &client,
++        &other,
++        "invalid: workflow not found or not triggerable by you",
++        vec![
++            (
++                "missing",
++                trigger(&other, &uuid::Uuid::new_v4().to_string()),
++            ),
++            ("soft-deleted", trigger(&other, &deleted)),
++            ("someone else's", trigger(&other, &live)),
++        ],
++    )
++    .await;
++
++    // Positive control: the owner triggers their workflow.
++    submit_ok(&client, &author, &trigger(&author, &live)).await;
++}
++
++/// GET `path` as `reader` and return the HTTP status and parsed body.
++async fn read_as(client: &Client, reader: &Keys, path: &str) -> (u16, Value) {
++    let resp = client
++        .get(format!("{}{path}", relay_http_url()))
++        .header("X-Pubkey", reader.public_key().to_hex())
++        .send()
++        .await
++        .expect("read workflow");
++    let status = resp.status().as_u16();
++    (status, resp.json().await.expect("parse response"))
++}
++
++/// Reading the runs or approvals of a workflow in a channel the caller cannot
++/// read answers exactly like reading a workflow that does not exist.
++#[tokio::test]
++#[ignore]
++async fn workflow_read_does_not_reveal_workflow() {
++    let client = http_client();
++    let owner = Keys::generate();
++    let outsider = Keys::generate();
++    let channel = create_channel(&client, &owner, "private").await;
++    let live = uuid::Uuid::new_v4().to_string();
++    let secret = save_webhook_workflow(&client, &owner, &channel, &live).await;
++    let run = start_webhook_run(&client, &live, &secret).await;
++    let missing = uuid::Uuid::new_v4().to_string();
++    let paths = |id: &str| {
++        [
++            format!("/workflows/{id}/runs"),
++            format!("/workflows/{id}/runs/{run}/approvals"),
++        ]
++    };
++
++    for (missing_path, live_path) in paths(&missing).iter().zip(paths(&live).iter()) {
++        let expected = read_as(&client, &outsider, missing_path).await;
++        assert_eq!(expected.0, 404, "{missing_path}: {:?}", expected.1);
++        assert_eq!(
++            read_as(&client, &outsider, live_path).await,
++            expected,
++            "{live_path} must answer like a missing workflow"
++        );
++    }
++
++    // Positive control: the owner reads their workflow's run and its approvals.
++    let [runs_path, approvals_path] = paths(&live);
++    let (status, body) = read_as(&client, &owner, &runs_path).await;
++    assert_eq!(status, 200, "owner runs read failed: {body}");
++    assert!(
++        body["runs"]
++            .as_array()
++            .is_some_and(|runs| runs.iter().any(|r| r["id"] == run.as_str())),
++        "owner runs must include {run}: {body}"
++    );
++    let (status, body) = read_as(&client, &owner, &approvals_path).await;
++    assert_eq!(status, 200, "owner approvals read failed: {body}");
++    assert!(body["approvals"].is_array());
++}
++
++/// Save a webhook-triggered workflow `id` in `channel` and return its secret.
++async fn save_webhook_workflow(client: &Client, owner: &Keys, channel: &str, id: &str) -> String {
++    let definition = sign(
++        owner,
++        30620,
++        "name: existence-oracle\ntrigger:\n  on: webhook\nsteps:\n  - id: pause\n    action: delay\n    duration: 1s\n",
++        vec![tag(&["d", id]), tag(&["h", channel])],
++    );
++    let (accepted, message) = submit(client, owner, &definition).await;
++    assert!(accepted, "webhook workflow rejected: {message}");
++    let response: Value = serde_json::from_str(
++        message
++            .strip_prefix("response:")
++            .expect("workflow save response"),
++    )
++    .expect("parse workflow save response");
++    response["webhook_secret"]
++        .as_str()
++        .expect("webhook secret")
++        .to_string()
++}
++
++/// Call webhook `id` with the right secret, assert it starts a run exactly as
++/// documented, and return the run id.
++async fn start_webhook_run(client: &Client, id: &str, secret: &str) -> String {
++    let (status, body) = call_webhook(client, id, Some(secret)).await;
++    assert_eq!(status, 202, "valid webhook call failed: {body}");
++    body["run_id"]
++        .as_str()
++        .and_then(|run| uuid::Uuid::parse_str(run).ok())
++        .unwrap_or_else(|| panic!("webhook response lacks a run_id: {body}"))
++        .to_string()
++}
++
++/// POST the public webhook endpoint for `id` with an optional secret header and
++/// return the HTTP status and parsed body.
++async fn call_webhook(client: &Client, id: &str, secret: Option<&str>) -> (u16, Value) {
++    let mut request = client.post(format!("{}/hooks/{id}", relay_http_url()));
++    if let Some(secret) = secret {
++        request = request.header("x-webhook-secret", secret);
++    }
++    let resp = request.send().await.expect("call webhook");
++    let status = resp.status().as_u16();
++    (status, resp.json().await.expect("parse response"))
++}
++
++/// Until a caller proves the webhook secret, the unauthenticated webhook
++/// endpoint answers every workflow exactly like a missing one, so it never
++/// reveals that a workflow exists or what its trigger is.
++#[tokio::test]
++#[ignore]
++async fn webhook_does_not_reveal_workflow() {
++    let client = http_client();
++    let owner = Keys::generate();
++    let channel = create_channel(&client, &owner, "open").await;
++    let webhook = uuid::Uuid::new_v4().to_string();
++    let secret = save_webhook_workflow(&client, &owner, &channel, &webhook).await;
++    let other_trigger = uuid::Uuid::new_v4().to_string();
++    let message_posted = sign(
++        &owner,
++        30620,
++        "name: existence-oracle\ntrigger:\n  on: message_posted\nsteps:\n  - id: pause\n    action: delay\n    duration: 1s\n",
++        vec![tag(&["d", &other_trigger]), tag(&["h", &channel])],
++    );
++    submit_ok(&client, &owner, &message_posted).await;
++
++    let missing = uuid::Uuid::new_v4().to_string();
++    let expected = call_webhook(&client, &missing, Some(&secret)).await;
++    assert_eq!(expected.0, 404, "missing workflow: {:?}", expected.1);
++    for (case, id, provided) in [
++        (
++            "non-webhook workflow",
++            &other_trigger,
++            Some(secret.as_str()),
++        ),
++        ("absent secret", &webhook, None),
++        ("wrong secret", &webhook, Some("wrong-secret")),
++    ] {
++        assert_eq!(
++            call_webhook(&client, id, provided).await,
++            expected,
++            "{case} must answer like a missing workflow"
++        );
++    }
++
++    // Positive control: the right secret starts a run.
++    start_webhook_run(&client, &webhook, &secret).await;
++}
+diff --git a/mobile/lib/shared/relay/relay_provider.dart b/mobile/lib/shared/relay/relay_provider.dart
+index 7e3f0d00a2a5bbeb489ff0cddb679f21d69b4f06..2599d7a3731f947b63aa711aace583e02ddfdc76 100644
+--- a/mobile/lib/shared/relay/relay_provider.dart
++++ b/mobile/lib/shared/relay/relay_provider.dart
+@@ -51,10 +51,19 @@ class RelayConfig {
+     return scheme == null ? _baseUrl : uri.replace(scheme: scheme).toString();
+   }
+ 
+-  /// Derive the websocket URL from the HTTP base URL.
++  /// Derive the websocket URL from the configured relay URL.
++  ///
++  /// Invite links already store websocket URLs (`ws://`/`wss://`). Preserve
++  /// those schemes exactly so NIP-42 signs the same relay URL the server
++  /// expects. HTTP(S) URLs are still accepted for dev/config fallback.
+   String get wsUrl {
+     final uri = Uri.parse(baseUrl);
+-    final scheme = uri.scheme == 'https' ? 'wss' : 'ws';
++    final scheme = switch (uri.scheme) {
++      'https' => 'wss',
++      'http' => 'ws',
++      'wss' || 'ws' => uri.scheme,
++      _ => uri.scheme,
++    };
+     return uri.replace(scheme: scheme).toString();
+   }
+ }
+diff --git a/mobile/test/shared/relay/relay_session_test.dart b/mobile/test/shared/relay/relay_session_test.dart
+index 50bdb5201d990538c18a50c1e46247a76d798b1b..effd20e55fe6d5b5452d61b25dc1364781888a8d 100644
+--- a/mobile/test/shared/relay/relay_session_test.dart
++++ b/mobile/test/shared/relay/relay_session_test.dart
+@@ -14,6 +14,25 @@ import 'package:buzz/shared/auth/auth_provider.dart';
+ import 'package:buzz/shared/relay/relay.dart';
+ 
+ void main() {
++  test('RelayConfig.wsUrl preserves websocket invite schemes', () {
++    expect(
++      const RelayConfig(baseUrl: 'wss://rusty-fingers.local:50596').wsUrl,
++      'wss://rusty-fingers.local:50596',
++    );
++    expect(
++      const RelayConfig(baseUrl: 'ws://localhost:3000').wsUrl,
++      'ws://localhost:3000',
++    );
++    expect(
++      const RelayConfig(baseUrl: 'https://relay.example:8443').wsUrl,
++      'wss://relay.example:8443',
++    );
++    expect(
++      const RelayConfig(baseUrl: 'http://relay.example:3000').wsUrl,
++      'ws://relay.example:3000',
++    );
++  });
++
+   test(
+     'confirmed minor tears down retained relay and observer providers',
+     () async {
+diff --git a/scripts/run-tests.sh b/scripts/run-tests.sh
+index fededb68421fbd26beb67437dde5c1a436cd7ba1..b88dc7fe207c02e43e9d3d34ebc5f5bf55434f4d 100755
+--- a/scripts/run-tests.sh
++++ b/scripts/run-tests.sh
+@@ -236,7 +236,8 @@ run_unit_tests() {
+       handlers::req::tests::revoke_then_replacement_keeps_replacement_whole \
+       handlers::req::tests::claims_after_connection_cleanup_are_refused \
+       handlers::req::tests::dropped_terminal_frame_cancels_connection \
+-      handlers::req::tests::revoke_dropped_terminal_frame_cancels_connection
++      handlers::req::tests::revoke_dropped_terminal_frame_cancels_connection \
++      handlers::req::tests::count_fallback_covers_filters_that_can_match_private_deletions
+ 
+   run_test_step "buzz-relay readiness tests" \
+     cargo test -p buzz-relay --lib readiness::tests:: -- --nocapture

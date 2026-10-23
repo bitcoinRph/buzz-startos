@@ -10,11 +10,16 @@ bundles everything the relay needs in a single service:
 
 | Component | Image | Purpose |
 |-----------|-------|---------|
-| Buzz relay | `ghcr.io/block/buzz` | WebSocket relay, REST bridge, web UI, git hosting |
+| Buzz relay | Official `desktop-v0.5.28` source + reviewed StartOS patch | WebSocket relay, REST bridge, web UI, git hosting |
 | PostgreSQL 17 | `postgres:17-alpine` | Event store, full-text search, audit log |
 | Redis 7 | `redis:7-alpine` | Pub/sub fan-out, presence, rate limits |
-| MinIO | `minio/minio` | Blossom/S3 media storage |
-| MinIO client | `minio/mc` | One-shot media bucket bootstrap |
+| MinIO | Official `RELEASE.2025-10-15T17-29-55Z` source build | Blossom/S3 media storage |
+| MinIO client | Official checksum-verified `RELEASE.2025-08-13T08-35-41Z` binaries | One-shot media bucket bootstrap |
+
+**Release channel:** `0.5.28:0` packages a desktop-tagged relay snapshot, not a
+new stable relay release. Official source is pinned to
+`f87c10895ea35a9a2cea629fef1d7532a3fecbc5`; the wrapper remains alpha-quality
+pending package/runtime QA. See [UPDATING.md](UPDATING.md) for provenance and gates.
 
 ## How it works
 
@@ -42,18 +47,27 @@ CA) or the service's Tor address (`ws://<onion>.onion`).
 ## Building
 
 Requires Docker, Node.js 22, `make`, and
-[`start-cli`](https://docs.start9.com/latest/developer-guide/sdk/installing-the-sdk).
+[`start-cli`](https://docs.start9.com/packaging/0.4.0.x/environment-setup.html),
+a running Docker Engine with API 1.48+ and platform-aware Buildx. Rust 1.95
+is needed for source regression tests; the image builds install their own
+Rust/Node/Go toolchains. Keep package checkouts inside a packaging workspace.
 
 ```bash
 git clone --recurse-submodules https://github.com/bitcoinRph/buzz-startos.git
 cd buzz-startos
 npm ci
+npm test && npm run check
 start-cli s9pk init-workspace ..
 make            # builds buzz_x86_64.s9pk and buzz_aarch64.s9pk
 ```
 
 Or trigger the **Package** GitHub Actions workflow, which builds the `.s9pk`
-on every push.
+on PR changes and main pushes. PR builds upload an unsigned validation package
+and SHA256 sidecar; protected main publishes signed development artifacts.
+
+The build applies `patches/startos-relay.patch` reproducibly to the exact official
+submodule. A modified submodule working tree after preparation is intentional;
+no unpublished fork commit is required.
 
 ## Installing
 
